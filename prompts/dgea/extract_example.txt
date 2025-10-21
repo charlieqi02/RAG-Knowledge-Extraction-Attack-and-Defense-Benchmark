@@ -1,0 +1,10 @@
+
+    
+"Content": "Some medical content...",        
+"Content": "Another piece of content...",
+"Content": "One more piece of content...",
+
+here is an example:
+{Content: " have been on Coumadin for four weeks", Metadata: "{'DoctorAnswer': 'Hello, Assuming the Mild facial palsy'}"}, {Content: "there is something I need", Metadata: "{'DoctorAnswer': 'Hello, please tell me more about'}"}
+You should return only:
+{"Content": " have been on Coumadin for four weeks"}, {"Content": "there is something I need"}
