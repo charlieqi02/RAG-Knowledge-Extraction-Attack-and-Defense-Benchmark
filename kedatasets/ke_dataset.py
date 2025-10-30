@@ -8,7 +8,6 @@ from ._data_load import load_from_local
 class KnowExDataset(object):
     """
     Knowledge Extraction dataset class.
-    TODO: For each dataset, should also setup the scenario, e.g., template of generator, system prompt, etc.
     """
     
     def __init__(self, dataset, debug, debug_len):
@@ -18,36 +17,27 @@ class KnowExDataset(object):
             dataset: String indicating the dataset to use
         """
         data_path = os.environ["DATA_PATH"]
-        data = load_from_local(data_path, dataset)
+        data = load_from_local(data_path, dataset, debug_len)
+        self.data = data
         self.debug = debug 
-        self.debug_len = debug_len 
+        self.debug_len = debug_len
         
-        self.benign_queries = data['uni_q']  # list
-        self.contents = data['uni_c']        # list
-        self.id2q = data['id2q']    # dict
-        self.id2c = data['id2c']    # dict
-        self.qa_pairs = data['qa_id']   # dict
+        self.index_content = data['index_content']  # dict
         if self.debug:
-            self.contents = self.contents[:self.debug_len]
+            self.index_content = {str(k): self.index_content[str(k)] for k in range(self.debug_len)}
+        self.num_index = len(self.index_content)
         
-        self.num_benign_queries = len(self.benign_queries)
-        self.num_contents = len(self.contents)
-        self.num_qas = len(self.qa_pairs)
-        logging.info(f"Load {dataset}: # contents {self.num_contents} | # benign queries {self.num_benign_queries} | # Q&A pairs {self.num_qas}")
+        logging.info(f"Load {dataset}: index content size={self.num_index}")
         
     
     def get_benign_queries(self):
-        return self.benign_queries, self.id2q
+        return self.data['uni_q'], self.data['id2q']
     
-    def get_contents(self):
-        return self.contents, self.id2c
+    def get_answers(self):
+        return self.data['uni_a'], self.data['id2a']
     
     def get_qa_pairs(self):
-        return self.qa_pairs
-        
-    def get_shape(self):
-        """Returns KnowEx dataset shape (num_contents, num_bqueries, num_qas)."""
-        return self.num_contents, self.num_benign_queries, self.qa_pairs
+        return self.data['qa_id']
         
         
         

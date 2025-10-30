@@ -10,8 +10,9 @@ import numpy as np
 from langchain.prompts import ChatPromptTemplate
 import pandas as pd
 
+from tools.parse_response import parse_repeat_response
+
 from .base import KnowExAttack
-from tools.attacks import extract_indexes
 from tools.get_embedding import get_embedding
 from tools.get_llm import get_llm
 
@@ -31,12 +32,6 @@ class DGEA(KnowExAttack):
         parser_llm="gpt4o-mini", llm_kwargs={}
         """
         super().__init__(args)
-        self.queried = []
-        self.current_query = None
-        
-        self.retrieved_idx = set()
-        self.replied_idx = set()
-        
         self.embedding_model = get_embedding(args.emb_model)
         self.embedding_dim = self.embedding_model.dim
         self.embedding_space = []  # A collection of existing vectors (embeddings) that form the embedding space.
@@ -48,22 +43,17 @@ class DGEA(KnowExAttack):
         self.iterations = args.iterations  # Number of iterations for query optimization.
         self.pool_size = args.pool_size  # tokens to sample from the total pool.
         self.allow_non_ascii = args.allow_non_ascii  # Whether to allow non-ASCII characters in the token pool.
-
-        # for content extraction when updating embedding space
-        self.parser_llm = get_llm(args.parser_llm)
-        self.temperature = args.llm_kwargs.temperature
-        self.example = args.llm_kwargs.example 
-        self.template = args.llm_kwargs.template
-        self.system_prompt = args.llm_kwargs.system_prompt
         
+        self.tokenizer = self.embedding_model.tokenizer
+        self.device = self.embedding_model.device
+        self.embed_sentence = self.embedding_model._embed
+        self.control_toks = self.tokenizer.encode(self.info_prompt, add_special_tokens=False, return_tensors='pt')[0].to(self.device)
+        self.all_tokens = list(range(len(self.tokenizer)))
+        if not self.allow_non_ascii:
+            self.all_tokens = [tok for tok in self.all_tokens if self.tokenizer.decode([tok]).isascii()]
+        logging.info(f"Total tokens in tokenizer: {len(self.all_tokens)}")
         
         prompt_dir = os.environ.get("PROMPT_PATH")
-        with open(os.path.join(prompt_dir, self.template), 'r') as f:
-            self.template = f.read()
-        with open(os.path.join(prompt_dir, self.system_prompt), 'r') as f:
-            self.system_prompt = f.read()
-        with open(os.path.join(prompt_dir, self.example), 'r') as f:
-            self.example_text = f.read()
         with open(os.path.join(prompt_dir, self.command_prompt), 'r') as f:
             self.command_prompt = f.read()
         with open(os.path.join(prompt_dir, self.info_prompt), 'r') as f:
@@ -82,14 +72,14 @@ class DGEA(KnowExAttack):
             2) Optimize the query info_prompt to approach the target embedding
         """
         # Choose target embedding
-        if query_id == 0:
+        if query_id == 0 or len(self.embedding_space) == 0:
             target_embedding = self.random_vec[query_id]    # TODO: to device
         else: 
             target_embedding = self._find_dissimilar_vector()
         
         # Optimize the query info_prompt to approach the target embedding
         info_prompt, best_loss, best_embedding = self._optimize_query(target_embedding)
-        query = self.command_prompt + " " + info_prompt
+        query = self.command_prompt + "\n" + info_prompt
         logging.info(f"Query {query_id}: {query}")
         logging.info(f"Cosine to target_embedding: {1 - best_loss}")
 
@@ -125,7 +115,7 @@ class DGEA(KnowExAttack):
             Returns:
                 np.array: A vector that is dissimilar to the centroid of the embedding space.
         """
-        embedding_space_tensor = torch.tensor(self.embedding_space, dtype=torch.float32)
+        embedding_space_tensor = torch.tensor(self.embedding_space, dtype=torch.float32).reshape(-1, self.embedding_dim)
         centroid = torch.mean(embedding_space_tensor, dim=0)
         farthest_vector = torch.randn(self.embedding_dim, requires_grad=True)
         farthest_vector = 0.6 * (farthest_vector - torch.min(farthest_vector)) / (
@@ -150,39 +140,31 @@ class DGEA(KnowExAttack):
         Returns:
             tuple: Best suffix, best loss, and best embedding found during the attack.
             """
-        tokenizer = self.embedding_model.tokenizer
-        device = self.embedding_model.device
-        embed_sentence = self.embedding_model._embed
-        control_toks = tokenizer.encode(self.info_prompt, add_special_tokens=False, return_tensors='pt')[0].to(device)
-        all_tokens = list(range(len(tokenizer)))
-        if not self.allow_non_ascii:
-            all_tokens = [tok for tok in all_tokens if tokenizer.decode([tok]).isascii()]
-
         # start optimizing
         best_suffix = self.info_prompt
         best_loss = float('inf')
         best_embedding = None
         for iteration in range(self.iterations):
-            indices = list(range(len(control_toks)))
+            indices = list(range(len(self.control_toks)))
             random.shuffle(indices)
             for i in indices:
-                current_best_toks = tokenizer.encode(best_suffix, add_special_tokens=False, return_tensors='pt')[0].to(
-                    device)
-                candidate_tokens = random.sample(all_tokens, self.pool_size)
+                current_best_toks = self.tokenizer.encode(best_suffix, add_special_tokens=False, return_tensors='pt')[0].to(
+                    self.device)
+                candidate_tokens = random.sample(self.all_tokens, self.pool_size)
                 for token in candidate_tokens:
                     new_control_toks = current_best_toks.clone()
                     new_control_toks[i] = token
-                    new_control_text = tokenizer.decode(new_control_toks)
-                    perturbed_sentence = self.command_prompt + ' ' + new_control_text
-                    sentence_embedding = embed_sentence(perturbed_sentence)
-                    loss = self.__calculate_loss(sentence_embedding, target_embedding, device)
+                    new_control_text = self.tokenizer.decode(new_control_toks)
+                    perturbed_sentence = self.command_prompt + '\n' + new_control_text
+                    sentence_embedding = self.embed_sentence(perturbed_sentence)
+                    loss = self.__calculate_loss(sentence_embedding, target_embedding, self.device)
                     if loss < best_loss:
                         best_loss = loss
                         best_suffix = new_control_text
                         best_embedding = sentence_embedding
                         """if best_loss < 0.3: # add a Threshold 
                             return best_suffix, best_loss, best_embedding"""
-            print(f"Iteration {iteration + 1}/{self.iterations}, Loss: {best_loss}")
+            logging.info(f"Iteration {iteration + 1}/{self.iterations}, Loss: {best_loss}")
         return best_suffix, best_loss, best_embedding
 
 
@@ -204,85 +186,13 @@ class DGEA(KnowExAttack):
         return loss
 
 
-    def parse_response(self, response, retrieved_docs):
+    def parse_response(self, response):
         """
         Parse the response from RAG system (generator) to extract information.
-        
-        TODO: original implementation is not good, it just compair index generated, instead of generated text and ground truth text.
-        TODO: maybe this part should be in base model, for consistent evaluation.
         """
-        # What is retrieved
-        NumberOfUniqueIndexesAdded = 0
-        IndexesRetrieved = []
-        IndexesAddedUnique = []
-        IndexesAddedUniqueCosineSimilarity = []
-        IndexesCosineSimilarity = []
-        
-        for doc in retrieved_docs:
-            if doc[0].metadata["index"] not in self.retrieved_idx:
-                NumberOfUniqueIndexesAdded += 1
-                self.retrieved_idx.add(doc[0].metadata["index"])
-                IndexesAddedUnique.append(doc[0].metadata["index"])
-                IndexesAddedUniqueCosineSimilarity.append(doc[1])
-            IndexesRetrieved.append(doc[0].metadata["index"])
-            IndexesCosineSimilarity.append(doc[1])
-            
-        # What is replied
-        IndexesReplied = []
-        IndexesRepliedCosineSimilarity = []
-        IndexesDuplicatedCount = 0
-        IndexesDuplicateReplied = []
-        HallucinatedIndexes = []
-        
-        CurrentIndexListFromReply = extract_indexes(response)
-        for CurrentDocindex in CurrentIndexListFromReply:
-            if CurrentDocindex not in IndexesRetrieved:
-                HallucinatedIndexes.append(CurrentDocindex)
-            else:
-                if CurrentDocindex not in IndexesReplied:
-                    IndexesReplied.append(CurrentDocindex)
-                    DocCosine = IndexesCosineSimilarity[IndexesRetrieved.index(CurrentDocindex)]
-                    IndexesRepliedCosineSimilarity.append(DocCosine)
-                    self.replied_idx.add(CurrentDocindex)
-                else:
-                    IndexesDuplicateReplied.append(CurrentDocindex)
-                    IndexesDuplicatedCount += 1
-        
-        # Update embedding space
-        contents = self._extract_contents(response)
-        self._embed_unique_contents(contents)
-        
-        return (response, IndexesRetrieved, IndexesCosineSimilarity, NumberOfUniqueIndexesAdded,
-                IndexesAddedUnique, IndexesAddedUniqueCosineSimilarity, IndexesReplied,
-                IndexesRepliedCosineSimilarity, IndexesDuplicateReplied, IndexesDuplicatedCount,
-                HallucinatedIndexes)
-        
-        
-    def _extract_contents(self, response):
-        """
-            Extract or fetch content from response, and if none are found, use an LLM to generate the content.
-        """
-        contents = self.__extract(response)
-        if len(contents) == 0:
-            logging.info("No content found in the response, using LLM to extract content.")
-            prompt = ChatPromptTemplate.from_template(self.template).format(
-                example=self.example, text=response)
-            # llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.1, google_api_key=gemini_api_key,
-            #                              safety_settings=None)
-            messages = [
-                {"role": "system", "content": self.system_prompt},
-                {"role": "user", "content": prompt},
-            ]
-
-            reply = self.parser_llm(messages, temperature=self.temperature)
-            contents = self.__extract(reply)
-        return contents
-        
-    
-    def __extract(self, text):
-        content_pattern = r'(?:\"?)Content(?:\"?)\s*:\s*\"([^\"]+)\"'
-        matches = re.findall(content_pattern, text)
-        return matches
+        results = parse_repeat_response(response)
+        self._embed_unique_contents(results)
+        return results
         
         
     def _embed_unique_contents(self, contents):

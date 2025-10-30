@@ -1,5 +1,0 @@
-Please extract all the text that is only after the Content keyword from the following text and return them as a list in the following format:
-{example}
-
-Here is the text you need to analyze:
-{text}

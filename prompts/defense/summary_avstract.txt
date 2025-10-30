@@ -1,0 +1,7 @@
+Based on the question and the context below, generate a concise summary of the relevant information. Rewrite the key points from the context to answer the question in your own words.
+
+If the provided context is not relevant to the question, you must reply with NO_RELEVANT_CONTENT.
+
+Question: {Query}
+Context: 
+{Retrieved Context}

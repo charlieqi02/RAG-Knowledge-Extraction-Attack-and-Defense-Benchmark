@@ -22,7 +22,7 @@ class KnowExAttack(ABC):
         pass
 
     @abstractmethod
-    def parse_response(self, response, retrieved_docs):
+    def parse_response(self, response):
         """
         Parse the response from RAG system (generator) to extract information.
         """

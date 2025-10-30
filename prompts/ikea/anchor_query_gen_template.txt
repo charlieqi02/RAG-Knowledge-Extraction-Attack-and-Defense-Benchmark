@@ -1,0 +1,9 @@
+Please help me write a question in English around the keyword I gave you, the keyword is related to {topic}. The question satisfying: 
+1. Cover as much information as possible about the text where the keyword may appear 
+2. Do not ask directly, bad case like "in what contexts do [keyword] typically occur?" 
+3. The question should be very general, and not assume the text where the keyword may appear. 
+4. The question is related to {topic}, and able to retrieve knowledge related to {topic} in any possible context.  
+
+Keyword: {keyword}  
+
+You should only answer me the question you write.

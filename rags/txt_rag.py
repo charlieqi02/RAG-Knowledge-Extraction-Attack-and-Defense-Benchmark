@@ -22,30 +22,22 @@ class TextRAG(RAGSystem):
             self.gen_kwargs.template = f.read()
         with open(os.path.join(prompt_dir, self.gen_kwargs.system_prompt), "r") as f:
             self.gen_kwargs.system_prompt = f.read()
+        self.system_prompt = self.gen_kwargs.system_prompt.replace("{role}", args.role)
     
     
-    
-    def index_content(self, dataset, debug_len=None):
+    def index_content(self, dataset):
         """
         Index raw contents into database.
         """
+        index_content = dataset.index_content  # dict: id -> content
         persist_dir = os.path.join(os.environ["DB_PATH"], self.db_path)
         os.makedirs(persist_dir, exist_ok=True)
 
         # Embed and store each document
         documents = []
-        seen_docs = set()
-        for qa in dataset.qa_pairs:
-            qid, cid = qa['query'], qa['content']
-            q, c = dataset.id2q[str(qid)], dataset.id2c[str(cid)]
-            if qid in seen_docs:
-                continue
-            seen_docs.add(qid)
-            metadata = {'content': c, "index":qid}  # based on query embeddings to retrieve
-            documents.append(Document(page_content=q, metadata=metadata))
-
-        if debug_len is not None:
-            documents = documents[:debug_len]
+        for cid, content in index_content.items():
+            metadata = {"index": cid}
+            documents.append(Document(page_content=content, metadata=metadata))
 
         # Create ChromaDB client
         self.db = Chroma.from_documents(documents, self.retriever, 
@@ -58,13 +50,17 @@ class TextRAG(RAGSystem):
         End-to-end QA. 
         """
         retrieved_docs = self.retrieve(query)
-        prompt = ChatPromptTemplate.from_template(self.gen_kwargs.template).format(Context=retrieved_docs, query=query)
+        context_list = [f"context {i}: \n\"{doc[0].page_content}\"" for i, doc in enumerate(retrieved_docs)]
+        context = "\n\n".join(context_list)
+        logging.info(f"Retrieved {len(retrieved_docs)} documents for the query.")
+        prompt = ChatPromptTemplate.from_template(self.gen_kwargs.template).format(context=context, query=query)
         
         messages = [
-            {'role': 'system', 'content': self.gen_kwargs.system_prompt},
+            {'role': 'system', 'content': self.system_prompt},
             {"role": "user", "content": prompt}
         ]
         response = self.generator(messages, temperature=self.gen_kwargs.temperature)
+            
         return response, retrieved_docs
 
 
@@ -79,7 +75,7 @@ class TextRAG(RAGSystem):
 
         elif "threshold" in vars(self.retr_kwargs):
             threshold = self.retr_kwargs.threshold
-            retrieved_docs = self.db.similarity_search_with_score(query, k=50)
+            retrieved_docs = self.db.similarity_search_with_score(query, k=topk)
             docs = [doc for doc in retrieved_docs if doc[1] >= threshold] if retrieved_docs else []
 
         else:

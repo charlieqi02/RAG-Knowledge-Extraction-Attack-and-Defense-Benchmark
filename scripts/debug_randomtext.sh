@@ -4,23 +4,22 @@ python pipeline.py \
     --des "for debugging" \
     --dataset "HealthCareMagic" \
     --rag "TextRAG" \
-    --attack "DGEA" \
+    --attack "RandomText" \
     --defense "None" \
     --seed 42 \
     --debug \
     --debug_len 100 \
     --gpu 0 \
     \
-    --ak_max_query 50 \
-    --ak_emb_model "MiniLM" \
-    --ak_iterations 1 \
+    --ak_max_query  \
     \
     --rg_gen_kwargs_system_prompt "textrag/system.txt" \
     --rg_gen_kwargs_template "textrag/template.txt" \
     --rg_db_path "debug" \
     --rg_retr_kwargs_topk 3 \
     \
-    --ak_command_prompt "dgea/ak_prefix.txt" \
-    --ak_info_prompt "dgea/ak_suffix.txt" \
-    \
-    --ak_random_vec "dgea/embedding_statistics.csv" \
+    --ak_llm_model "gpt4o-mini" \
+    --ak_attack_template "random/attack_template.txt" \
+    --ak_temperature 0.7 \
+    --ak_template "random/gen_template.txt" \
+    --ak_system_prompt "random/gen_system.txt" \

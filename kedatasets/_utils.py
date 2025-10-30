@@ -28,16 +28,16 @@ def split_text(text, pattern):
     
 def index_qas(qa_pairs):
     unique_queries = []
-    unique_contents = []
+    unique_answers = []
     q2id = {}
-    c2id = {}
+    a2id = {}
     id2q = {}
-    id2c = {}
+    id2a = {}
     qa_id = []
 
     for qa in qa_pairs:
         q = qa["query"]
-        c = qa["content"]
+        c = qa["answer"]
 
         # 处理 query id
         if q not in q2id:
@@ -48,15 +48,15 @@ def index_qas(qa_pairs):
         else:
             q_id = q2id[q]
 
-        # 处理 content id
-        if c not in c2id:
-            c_id = str(len(unique_contents))
-            c2id[c] = c_id
-            id2c[c_id] = c
-            unique_contents.append(c)
+        # 处理 answer id
+        if c not in a2id:
+            c_id = str(len(unique_answers))
+            a2id[c] = c_id
+            id2a[c_id] = c
+            unique_answers.append(c)
         else:
-            c_id = c2id[c]
+            c_id = a2id[c]
 
-        qa_id.append({"query": q_id, "content": c_id})
+        qa_id.append({"query": q_id, "answer": c_id})
 
-    return unique_queries, unique_contents, id2q, id2c, qa_id
+    return unique_queries, unique_answers, id2q, id2a, qa_id

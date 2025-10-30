@@ -1,0 +1,9 @@
+Generate a structured list of {n} **anchor words** related to the topic: **{topic}**. Your Generated anchor words should be: 
+1. **Highly representative** of the topic, covering key aspects. 
+2. **Distinctive yet broad**, ensuring effective retrieval of relevant knowledge. 
+3. **Diverse**, including domain-specific terms, common collocations, and conceptual keywords. 
+4. **Formatted in JSON**, so it can be easily parsed programmatically.  
+
+**Output Format (Strictly JSON)**: {{ “anchor words”: [ “word1”, “word2”, “word3”, “...” ] }}  
+
+Ensure the response **only contains the JSON structure** and no extra explanations.

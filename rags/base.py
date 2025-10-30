@@ -19,7 +19,7 @@ class RAGSystem(ABC):
     # ----- Public API -----
 
     @abstractmethod
-    def index_content(self, contents, debug_len=None):
+    def index_content(self, contents):
         """
         Index raw contents into database.
         """

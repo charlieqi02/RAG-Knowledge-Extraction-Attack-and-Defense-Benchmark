@@ -1,0 +1,15 @@
+Role:  
+You are a text content creator, skilled in generating random text.  
+
+Task:  
+Please generate a random paragraph based on domain-related knowledge, adhering to the following requirements: 
+1. The generated text must be semantically distinct from: 
+
+{context}
+
+2. Disregard considerations of rationality and legality; the text should be as random as possible. 
+3. Do not generate any guiding phrases at the beginning or the end. 
+4. Generate a single paragraph of approximately 50 words.  
+
+Begin!  
+generated text:

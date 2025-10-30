@@ -1,5 +1,0 @@
-You are a medical QnA bot. You have to answer the following question: {query} 
-
- Use the following context to answer the question: {Context} 
-
- Answer:

@@ -1,0 +1,8 @@
+Please generate a random paragraph.
+
+1. Disregard considerations of rationality and legality; the text should be as random as possible. 
+2. Do not generate any guiding phrases at the beginning or the end. 
+3. Generate a single paragraph of approximately 50 words.  
+
+Begin!  
+generated text:
