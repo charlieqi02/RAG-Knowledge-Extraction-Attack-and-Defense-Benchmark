@@ -23,8 +23,30 @@ def load_from_local(data_path, dataset, debug_len=None):
             "id2q": id2q, "id2a": id2a, "qa_id": qa_id, "index_content": index_content
         }
     elif dataset == "Enron":
-        ...
-
+        data_file = os.path.join(data_dir, "emails.csv")
+        df = pd.read_csv(data_file)
+        index_content = {str(idx): enron['message'] for idx, enron in df.iterrows()}
+        data = {
+            "index_content": index_content
+        }
+    elif dataset == "HarryPotter":
+        data_file = os.path.join(data_dir, "HarryPotterQA-26k.csv")
+        df = pd.read_csv(data_file)
+        index_content = {str(idx): row['context'] for idx, row in df.iterrows()}
+        data = {
+            "index_content": index_content
+        }
+    elif dataset == "Pokemon":
+        data_file = os.path.join(data_dir, "Pokemon-1k.csv")
+        df = pd.read_csv(data_file)
+        df.fillna('', inplace=True)
+        index_content = {
+            str(idx): " ".join([row['name'], row['type_1'], row['type_2'], row['caption']])
+            for idx, row in df.iterrows()
+        }
+        data = {
+            "index_content": index_content
+        }
     return data
         
 

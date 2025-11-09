@@ -6,7 +6,7 @@ def get_pipeline_args(all_rags, all_attacks, all_defenses):
         p.add_argument(
             "--des", default="", type=str, help="Description of the run, will be saved in config.json")
         p.add_argument(
-            "--dataset", default="HealthCareMagic", choices=["Enron", "HealthCareMagic"], help="Knowledge Extraction dataset")
+            "--dataset", default="HealthCareMagic", choices=["Enron", "HealthCareMagic", "HarryPotter", "Pokemon"], help="Knowledge Extraction dataset")
         p.add_argument(
             "--rag", choices=all_rags, default="TextRAG", help="RAG systems for knowledge extraction attack & defense")
         p.add_argument(

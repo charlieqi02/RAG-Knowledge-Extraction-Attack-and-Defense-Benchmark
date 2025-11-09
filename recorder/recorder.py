@@ -29,6 +29,7 @@ class Recorder:
             f.write(json.dumps(record, indent=2) + "\n")
         
         logging.info(f"Recorded query <{query_id}> results.")
+        logging.info(f"Saved to {self.log_path} ...")
         self.start_query = query_id + 1
         
 

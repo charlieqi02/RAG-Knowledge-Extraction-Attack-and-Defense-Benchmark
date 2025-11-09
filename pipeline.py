@@ -8,7 +8,7 @@ import time
 
 import rags
 import attacks
-import defenses
+from defenses import DefenseBase
 
 from kedatasets.ke_dataset import KnowExDataset
 from recorder.recorder import Recorder
@@ -48,7 +48,9 @@ def pipeline(args):
     with open(os.path.join(save_dir, "config.json"), "w") as fjson:
         json.dump(ns_to_dict(args), fjson, indent=2)
     logging.info("Config saved as config.json")
-        
+    
+    defense = DefenseBase(args, args.df)
+    
     # create dataset
     dataset = KnowExDataset(args.dataset, args.debug, args.debug_len)
     # create RAG system 
@@ -57,8 +59,6 @@ def pipeline(args):
     
     # get attack method
     attack = getattr(attacks, args.attack)(args.ak)
-    # get defense method
-    # TODO: defense = getattr(defenses, args.defense)(args.df)
     # get recorder
     recorder = Recorder(save_dir, args)
     

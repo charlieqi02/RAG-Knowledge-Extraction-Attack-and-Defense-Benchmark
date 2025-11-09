@@ -12,11 +12,14 @@ import torch.nn as nn
 import numpy as np
 from langchain.prompts import ChatPromptTemplate
 import pandas as pd
+import json
+import re
 
 from .base import KnowExAttack
 from tools.attacks import extract_indexes
 from tools.get_embedding import get_embedding
 from tools.get_llm import get_llm
+from tools.attacks import cos_sim, parse_anchor_words, detect_refusal
 
 
 ikea_attack = ["IKEA"]
@@ -44,89 +47,113 @@ class IKEA(KnowExAttack):
         self.num_anchors = args.num_anchors  # initial number of anchor concepts to be generated
         self.anchors = {}  # generated anchor concepts <'aid': anchor_word>
         self.anchor_gen_template = args.anchor_gen_template  # prompt template for anchor concept generation
+        self.query_gen_iteration = args.query_gen_iterations  # number of query generation iterations per anchor concept
         
-        # TODO: How to banlance diversity and relevance in anchor generation? (constrained optimization)
         self.thresh_sim_topic = args.thresh_sim_topic   # generated anchors should be relevant to topic word (>= thresh)
         self.thresh_dissim_anchor = args.thresh_dissim_anchor   # generated anchors should be dissimilar to each other (<= thresh)
         self.thresh_q_anchor = args.thresh_q_anchor  # anchor-based query should be relevant to anchor (>= thresh)
         
-        ## Experience reflection
-        self.current_query = None  # store current query info for experience reflection
-        self.current_anchor = None
+        ## Experience reflection       
+        self.query_response_pool = [] 
+        self.query_history_unrelated = []
+        self.query_history_outlier = []
         
-        self.anchor_query_response_pool = [] # store (anchor, query, response) triplets for experience reflection
-        self.initial_anchor_sample_scores = []  # anchor sampling scores <'aid': score>
+        self.anchor_sample_scores = []  # anchor sampling scores <'aid': score>
         self.softmax = nn.Softmax(dim=0)        
         self.sample_temperature = args.sample_temperature
         
         self.anchor_query_gen_template = args.anchor_query_gen_template  # prompt template for anchor-based query generation
         self.thresh_irrelevant = args.thresh_irrelevant   # genertated response should be relevant to the query (>= thresh)
-        self.thresh_outlier = args.thresh_outlier   # Outlier: refused by the system, or system don't know this information say "I don't know" something
-        
+        self.thresh_outlier = args.thresh_outlier   # Outlier: refused 
+                
         self.penalty_irrelevant = args.penalty_irrelevant
         self.penalty_refusal = args.penalty_refusal
         
+        self.thresh_qy_sim = args.thresh_qy_sim  # successful (q,y) should have sim(q,y) >= thresh
+        
         ## Trust-region directed mutation
-        self.trust_region_scale = args.trust_region_scale
+        self.current_query = None
+        self.current_response = None
+        self.mut_flag = 0 # 0 means no mutation this round, 1 means do mutation
+        
+        self.gamma = args.gamma
         self.anchor_mutate_gen_template = args.anchor_mutate_gen_template  # prompt template for anchor mutation
         
         self.thresh_stop_q = args.thresh_stop_q
         self.thresh_stop_y = args.thresh_stop_y
-        self.thresh_sim = args.thresh_sim
+
+
+        # load templates
+        prompt_dir = os.environ.get("PROMPT_PATH")
+        with open(os.path.join(prompt_dir, self.anchor_gen_template), 'r') as f:
+            self.anchor_gen_template = f.read()
+        with open(os.path.join(prompt_dir, self.anchor_query_gen_template), 'r') as f:
+            self.anchor_query_gen_template = f.read()
+        with open(os.path.join(prompt_dir, self.anchor_mutate_gen_template), 'r') as f:
+            self.anchor_mutate_gen_template = f.read()
         
+        self.selected = []
+        self.generate_anchors()
+        logging.info("Anchors: %s", str([c[0] for c in self.anchors.values()]))
+    
+    
 
     def get_query(self, query_id):
         """
-        Sample an anchor via ER and produce a natural user-like query for that anchor.
-        Returns a dict: { 'query_id': int, 'aid': str, 'query': str }
+        Two modes for getting a query:
+        1) Sample anchor and get query.
+        2) Mutate anchor based on previous successful (q,y) and get query.
         """
-        # sample anchor
-        aid = self.sample_anchor()
-        # generate queries
-        queries = self.generate_queries_for_anchor(aid, q_per_anchor=5)
-        if not queries:
-            # fallback: use anchor itself phrased as question
-            q = f"What can you tell me about {self.anchors[aid]}?"
-        else:
-            # choose randomly among generated queries
-            q = random.choice(queries)
-
-        # store a "pending" placeholder in history? We'll store after parse_response to keep (q,y)
-        meta = {"query_id": query_id, "aid": aid}
-        return {"query_id": query_id, "aid": aid, "query": q, "meta": meta}
-
-
+        if self.mut_flag == 0:
+            # sampling mode: experience reflection based sampling
+            anchor = self.sample_anchor()
+            query = self.generate_queries_for_anchor(anchor)
+        elif self.mut_flag == 1:
+            # mutation mode: trust-region directed mutation
+            anchor = self.mutate_anchor()
+            if anchor is None:
+                # cannot find valid mutated anchor, fallback to sampling
+                anchor = self.sample_anchor()
+                self.mut_flag = 0
+            query = self.generate_queries_for_anchor(anchor)
+        self.current_query = query
+        
+        logging.info(f"Query {query_id}: {query}")
+        return query 
+    
+    
     # ---------------------
     # Anchor generation
     # ---------------------
-    def generate_anchors(self, regen_candidates: int = 150):
+    def generate_anchors(self):
         """
         Use the LLM to propose candidate anchors, filter by similarity to topic and by diversity.
         Populates self.anchors with num_anchors many items.
         """
+        regen_candidates = self.num_anchors * 3
+        
         if not self.topic_word:
             raise ValueError("topic_word required for anchor generation")
 
         prompt = self.anchor_gen_template.format(topic=self.topic_word, n=regen_candidates)
-        raw = self.llm_generate(prompt)
-        # simple split: lines, commas
-        candidates = re.split(r"[\n,;]+", raw)
-        candidates = [c.strip() for c in candidates if c and len(c.strip()) <= 80]
+        raw = self.attack_llm([{"role": "user", "content": prompt}], temperature=0.5)
+        # parse in a json format: {{ “anchor words”: [ “word1”, “word2”, “word3”, “...” ] }} 
+        candidates = parse_anchor_words(raw)
+        # logging.info("Raw anchor generation output: %s", raw)
+        logging.info("Generated %d candidate anchors", len(candidates))
 
         # compute embeddings and filter by sim to topic
-        topic_vec = self.embed(self.topic_word)
+        topic_vec = self.attack_emb._embed(self.topic_word)
         cand_filtered: List[Tuple[str, float, np.ndarray]] = []
         for c in candidates:
-            try:
-                vec = self.embed(c)
-                sim = self.cos_sim(topic_vec, vec)
-                if sim >= self.thresh_sim_topic:
-                    cand_filtered.append((c, sim, vec))
-            except Exception:
-                continue
+            vec = self.attack_emb._embed(c)
+            sim = cos_sim(topic_vec, vec)
+            if sim >= self.thresh_sim_topic:
+                cand_filtered.append((c, sim, vec))
+        logging.info("Generated %d candidate anchors after topic relevance filtering", len(cand_filtered))
 
         # diversity selection: greedy farthest-first
-        selected: List[Tuple[str, float, np.ndarray]] = []
+        selected: List[Tuple[str, float, np.ndarray]] = self.selected
         while len(selected) < self.num_anchors and cand_filtered:
             if not selected:
                 # pick highest sim to topic first
@@ -136,7 +163,7 @@ class IKEA(KnowExAttack):
                 # pick candidate maximizing min distance to selected
                 best_idx, best_score = None, -1.0
                 for idx, (c, sim, vec) in enumerate(cand_filtered):
-                    min_sim = min(self.cos_sim(vec, svec) for (_, _, svec) in selected)
+                    min_sim = min(cos_sim(vec, svec) for (_, _, svec) in selected)
                     # we want dissimilar anchors, so minimize similarity -> maximize (1 - sim)
                     # use min_sim directly to prefer lower similarity
                     if (1.0 - min_sim) > best_score:
@@ -151,102 +178,52 @@ class IKEA(KnowExAttack):
             if len(selected) > 1:
                 for i in range(len(selected)):
                     for j in range(i + 1, len(selected)):
-                        s = self.cos_sim(selected[i][2], selected[j][2])
+                        s = cos_sim(selected[i][2], selected[j][2])
                         if s > self.thresh_dissim_anchor:
-                            logging.debug("Selected anchors have high pairwise sim=%.3f", s)
+                            logging.info("Selected anchors have high pairwise sim=%.3f", s)
+
+        self.selected = selected
+        logging.info("Selected %d anchors after diversity filtering", len(selected))
+
+        # if len(selected) < self.num_anchors:
+        #     logging.info("Could not generate enough diverse anchors, generate another round ...")
+        #     self.generate_anchors()
+        #     return
 
         # populate anchors map
-        for word, sim, vec in selected[: self.num_anchors]:
-            aid = f"A{self.next_anchor_idx}"
-            self.next_anchor_idx += 1
-            self.anchors[aid] = word
-            self.initial_anchor_sample_scores[aid] = 0.0
+        for idx, (word, sim, vec) in enumerate(selected[: self.num_anchors]):
+            aid = f"{idx}"
+            self.anchors[aid] = (word, vec)
+            self.anchor_sample_scores.append(0.0)
 
         logging.info("Generated %d anchors for topic '%s'", len(self.anchors), self.topic_word)
+        
         return list(self.anchors.items())
-
+    
     # ---------------------
     # Query generation for anchor
     # ---------------------
-    def generate_queries_for_anchor(self, aid: str, q_per_anchor: int = 5) -> List[str]:
+    def generate_queries_for_anchor(self, anchor: str) -> List[str]:
         """
         Generate candidate natural user questions from an anchor word.
-        Returns list of queries that pass thresh_q_anchor.
+        for loop, util q_per_anchor limit or one is pass thresh_q_anchor.
         """
-        if aid not in self.anchors:
-            return []
-        anchor_word = self.anchors[aid]
-        prompt = self.anchor_query_gen_template.format(anchor=anchor_word, k=q_per_anchor)
-        raw = self.llm_generate(prompt)
-        qs = re.split(r"[\n]+", raw)
-        qs = [q.strip() for q in qs if q.strip()]
-
-        queries = []
-        anchor_vec = self.embed(anchor_word)
-        for q in qs:
-            if len(queries) >= q_per_anchor:
+        anchor_word = anchor
+        anchor_vec = self.attack_emb._embed(anchor_word)
+        prompt = self.anchor_query_gen_template.format(topic=self.topic_word, keyword=anchor_word)
+        
+        best_query, best_sim = None, -1.0
+        for i in range(self.query_gen_iteration):        
+            raw = self.attack_llm([{"role": "user", "content": prompt}], temperature=0.5)
+            qvec = self.attack_emb._embed(raw)
+            qw_sim = cos_sim(qvec, anchor_vec)
+            if best_sim < qw_sim:
+                best_sim = qw_sim
+                best_query = raw
+            if qw_sim >= self.thresh_q_anchor:
                 break
-            try:
-                qvec = self.embed(q)
-                if self.cos_sim(qvec, anchor_vec) >= self.thresh_q_anchor:
-                    # simple question check
-                    if q.endswith("?") or re.match(r"^(what|how|why|when|where|who)\b", q.lower()):
-                        queries.append(q)
-            except Exception:
-                continue
 
-        # fallback: relax threshold once
-        if not queries:
-            logging.debug("No queries passed thresh for anchor %s, relaxing threshold", aid)
-            for q in qs:
-                try:
-                    qvec = self.embed(q)
-                    if self.cos_sim(qvec, anchor_vec) >= (self.thresh_q_anchor - 0.1):
-                        queries.append(q)
-                except Exception:
-                    continue
-
-        return queries
-
-
-    # ---------------------
-    # ER sampling
-    # ---------------------
-    def _anchor_penalty(self, aid: str) -> float:
-        """
-        Sum of psi(w,h) for anchor aid over history.
-        psi(w,h) defined:
-          - if h in H_o (refusal) and sim(w,q_h) > delta_o -> -p
-          - if h in H_u (irrelevant) and sim(w,q_h) > delta_u -> -kappa
-          - else 0
-        We'll use delta_o and delta_u as thresholds derived from attributes (thresh_stop_q etc).
-        """
-        total = 0.0
-        # get anchor vector
-        try:
-            anchor_vec = self.embed(self.anchors[aid])
-        except Exception:
-            return 0.0
-
-        # define similarity radii
-        delta_o = getattr(self, "thresh_stop_q", 0.3)
-        delta_u = getattr(self, "thresh_stop_q", 0.45)
-
-        for (h_aid, q_h, y_h, rd_h, sim_qy_h, sim_y_rd_h, label) in self.anchor_query_response_pool:
-            # compute sim between anchor and historical query
-            try:
-                qh_vec = self.embed(q_h)
-                sim_wa = self.cos_sim(anchor_vec, qh_vec)
-            except Exception:
-                sim_wa = 0.0
-
-            if label == "refusal" and sim_wa > delta_o:
-                total -= self.penalty_refusal
-            elif label == "irrelevant" and sim_wa > delta_u:
-                total -= self.penalty_irrelevant
-            # useful -> no negative penalty
-
-        return total
+        return best_query
     
     
     def sample_anchor(self) -> str:
@@ -254,27 +231,19 @@ class IKEA(KnowExAttack):
         Compute sample distribution over anchors using softmax over penalty scores.
         Anchors with more negative penalties will have lower probability.
         """
-        aids = list(self.anchors.keys())
-        if not aids:
-            raise RuntimeError("No anchors to sample")
-
-        scores = np.array([self._anchor_penalty(aid) for aid in aids], dtype=float)
-        # convert to probabilities: higher score -> more likely; but penalties are negative so we invert
+        scores = torch.tensor(self.anchor_sample_scores, dtype=torch.float32)
         # We use softmax( beta * scores )
-        beta = float(getattr(self, "sample_temperature", 1.0))
-        # To improve numeric stability, subtract max
-        max_score = np.max(scores)
-        exps = np.exp(beta * (scores - max_score))
-        probs = exps / (np.sum(exps) + 1e-12)
+        beta = self.sample_temperature
+        self.softmax = nn.Softmax(dim=0)   
+        probs = self.softmax(beta * scores)
+        idx = torch.multinomial(probs, num_samples=1).item()
 
-        choice = np.random.choice(len(aids), p=probs)
-        chosen_aid = aids[choice]
-        return chosen_aid
+        return self.anchors[str(idx)][0]
 
     # ---------------------
     # TRDM (mutation)
     # ---------------------
-    def mutate_anchor(self, aid: str, q: str, y: str, sim_qy: float) -> Optional[str]:
+    def mutate_anchor(self) -> Optional[str]:
         """
         Given a successful (q, y) pair for anchor 'aid', attempt to generate mutation anchors
         inside the trust region W* = { w | sim(w, y) >= gamma * sim(q, y) }.
@@ -282,72 +251,87 @@ class IKEA(KnowExAttack):
         If a valid new anchor is found, add to self.anchors and return its id; else None.
         """
         # create prompt to generate candidates
-        prompt = self.anchor_mutate_gen_template.format(anchor=self.anchors[aid], query=q, response=y, n=20)
-        raw = self.llm_generate(prompt)
-        candidates = re.split(r"[\n,;]+", raw)
-        candidates = [c.strip() for c in candidates if c.strip()]
-
-        if not candidates:
-            return None
-
-        y_vec = self.embed(y)
-        q_vec = self.embed(q)
-        gamma = float(self.trust_region_scale)
-
-        # build candidate list in W*
-        cand_valid = []
+        prompt = self.anchor_mutate_gen_template.format(q=self.current_query, y=self.current_response, n=50)
+        raw = self.attack_llm([{"role": "user", "content": prompt}], temperature=0.5)
+        candidates = parse_anchor_words(raw)
+        logging.info("Generated %d candidate mutated anchors", len(candidates))
+        
+        # filter candidates by trust region
+        query_vec = self.attack_emb._embed(self.current_query)
+        response_vec = self.attack_emb._embed(self.current_response)
+        sim_qy = cos_sim(query_vec, response_vec)
+        trust_region_thresh = self.gamma * sim_qy
+        
+        trust_region_candidates = []
         for c in candidates:
-            try:
-                cvec = self.embed(c)
-                sim_c_y = self.cos_sim(cvec, y_vec)
-                if sim_c_y >= gamma * sim_qy:
-                    sim_c_q = self.cos_sim(cvec, q_vec)
-                    cand_valid.append((c, sim_c_y, sim_c_q))
-            except Exception:
-                continue
-
-        if not cand_valid:
-            logging.debug("No mutation candidates inside trust region for anchor %s", aid)
+            c_vec = self.attack_emb._embed(c)
+            sim_cy = cos_sim(c_vec, response_vec)
+            if sim_cy >= trust_region_thresh:
+                # valid mutated anchor found
+                trust_region_candidates.append((c, c_vec))
+        logging.info("Found %d candidates inside trust region", len(trust_region_candidates))
+        
+        if not trust_region_candidates:
             return None
-
-        # choose candidate with minimal sim to q (farthest)
-        cand_valid.sort(key=lambda x: x[2])  # by sim_c_q ascending
-        chosen_word = cand_valid[0][0]
-
-        # check similarity to existing anchors to avoid near-duplicates
-        chosen_vec = self.embed(chosen_word)
-        for existing in self.anchors.values():
-            if self.cos_sim(chosen_vec, self.embed(existing)) > self.thresh_dissim_anchor:
-                logging.debug("Mutation candidate too similar to existing anchor, skipping")
-                # still allow but log; in practice we may skip or add depending on policy
-                # for now continue to next candidate
-                # try to find another candidate
-                for cand in cand_valid[1:]:
-                    cand_word = cand[0]
-                    cand_vec = self.embed(cand_word)
-                    if self.cos_sim(cand_vec, self.embed(existing)) <= self.thresh_dissim_anchor:
-                        chosen_word = cand_word
-                        chosen_vec = cand_vec
-                        break
-
-        # add to anchors
-        new_aid = f"A{self.next_anchor_idx}"
-        self.next_anchor_idx += 1
-        self.anchors[new_aid] = chosen_word
-        self.initial_anchor_sample_scores[new_aid] = 0.0
-        logging.info("Mutated new anchor %s -> %s from parent %s", new_aid, chosen_word, aid)
-        return new_aid
+        
+        # select candidate farthest from query
+        best_cand, best_vec, best_sim = None, None, float('inf')
+        for c, c_vec in trust_region_candidates:
+            sim_cq = cos_sim(c_vec, query_vec)
+            if sim_cq < best_sim:
+                best_sim = sim_cq
+                best_cand = c
+                best_vec = c_vec
+        
+        return best_cand
 
 
     def parse_response(self, response):
-        self.anchor_query_response_pool.append(
-            self.current_anchor,
-            self.current_query,
-            response
-            )
+        self.current_response = response
+        
+        query_vec = self.attack_emb._embed(self.current_query)
+        response_vec = self.attack_emb._embed(self.current_response)
+        
+        
+        if self.mut_flag == 1:
+            # additional check for mutated (q,y)
+            for his_q, his_y in self.query_response_pool:
+                his_q_vec = self.attack_emb._embed(his_q)
+                his_y_vec = self.attack_emb._embed(his_y)
+                sim_y = cos_sim(his_y_vec, response_vec)
+                if sim_y >= self.thresh_stop_y:
+                    self.mut_flag = 0
+                    break
+                sim_q = cos_sim(his_q_vec, query_vec)
+                if sim_q >= self.thresh_stop_q:
+                    self.mut_flag = 0
+                    break
+        elif self.mut_flag == 0:
+            self.mut_flag = 1  # assume mutation unless proven otherwise
+            
+            # detect irrelevant
+            sim_qy = cos_sim(query_vec, response_vec)
+            if sim_qy < self.thresh_qy_sim:
+                self.query_history_unrelated.append(self.current_query)
+                # update anchor sample score
+                for idx, (anchor, anchor_vec) in self.anchors.items():
+                    if cos_sim(anchor_vec, query_vec) >= self.thresh_irrelevant:
+                        self.anchor_sample_scores[int(idx)] -= self.penalty_irrelevant
+                self.mut_flag = 0
+            
+            # detect refusal
+            if detect_refusal(self.attack_llm, self.current_response) == 0:
+                self.query_history_outlier.append(self.current_query)
+                # update anchor sample score
+                for idx, (anchor, anchor_vec) in self.anchors.items():
+                    if cos_sim(anchor_vec, query_vec) >= self.thresh_outlier:
+                        self.anchor_sample_scores[int(idx)] -= self.penalty_refusal
+                self.mut_flag = 0
+
+
+        self.query_response_pool.append((self.current_query, self.current_response))
+            
         return [response]
     
-
-
 
 

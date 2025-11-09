@@ -1,0 +1,16 @@
+You are an assistant that generates new *anchor concepts* for adaptive retrieval.
+
+Given the following context:
+- User Question: {q}
+- Model Response: {y}
+
+Your task:
+1. Generate concise, single-phrase {n} *anchor words* that are:
+   - Semantically related to the **response**.
+   - Distinct from the **original question** (avoid paraphrases).
+   - Suitable as independent search or query topics.
+2. Avoid generic or stop words.
+
+**Output Format (Strictly JSON)**: {{ “anchor words”: [ “word1”, “word2”, “word3”, “...” ] }}  
+
+Ensure the output is **only this JSON object**, with no extra text, explanation, or commentary.

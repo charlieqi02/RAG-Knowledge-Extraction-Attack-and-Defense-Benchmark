@@ -15,7 +15,7 @@ from tools.parse_response import parse_repeat_response
 from .base import KnowExAttack
 from tools.get_embedding import get_embedding
 from tools.get_llm import get_llm
-
+from tools.attacks import detect_refusal
 
 dgea_attack = ["DGEA"]
 
@@ -79,7 +79,7 @@ class DGEA(KnowExAttack):
         
         # Optimize the query info_prompt to approach the target embedding
         info_prompt, best_loss, best_embedding = self._optimize_query(target_embedding)
-        query = self.command_prompt + "\n" + info_prompt
+        query = self.command_prompt.replace("<info>", info_prompt)
         logging.info(f"Query {query_id}: {query}")
         logging.info(f"Cosine to target_embedding: {1 - best_loss}")
 
@@ -155,7 +155,7 @@ class DGEA(KnowExAttack):
                     new_control_toks = current_best_toks.clone()
                     new_control_toks[i] = token
                     new_control_text = self.tokenizer.decode(new_control_toks)
-                    perturbed_sentence = self.command_prompt + '\n' + new_control_text
+                    perturbed_sentence = self.command_prompt.replace("<info>", new_control_text)
                     sentence_embedding = self.embed_sentence(perturbed_sentence)
                     loss = self.__calculate_loss(sentence_embedding, target_embedding, self.device)
                     if loss < best_loss:
@@ -191,6 +191,11 @@ class DGEA(KnowExAttack):
         Parse the response from RAG system (generator) to extract information.
         """
         results = parse_repeat_response(response)
+
+        if results == []:
+            if detect_refusal(response) == 1:
+                results = [response]
+                
         self._embed_unique_contents(results)
         return results
         

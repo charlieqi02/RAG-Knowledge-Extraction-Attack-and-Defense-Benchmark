@@ -2,6 +2,9 @@ Your task is to review the provided question and context. You must select from t
 
 Important: Do not modify the text you extract. If no part of the context is useful, respond with NO_RELEVANT_CONTENT.
 
-Question: {Query}
+Question: {query} 
+
 Context: 
-{Retrieved Context}
+{context} 
+
+Answer:

@@ -11,7 +11,7 @@ from langchain.prompts import ChatPromptTemplate
 import pandas as pd
 
 from .base import KnowExAttack
-from tools.attacks import extract_indexes
+from tools.attacks import extract_indexes, detect_refusal
 from tools.get_embedding import get_embedding
 from tools.get_llm import get_llm
 from tools.parse_response import parse_repeat_response
@@ -156,6 +156,9 @@ class RandomEmb(KnowExAttack):
 
     def parse_response(self, response):
         results = parse_repeat_response(response)
+        if results == []:
+            if detect_refusal(response) == 1:
+                results = [response]
         return results
                 
 
@@ -213,6 +216,9 @@ class RandomToken(KnowExAttack):
 
     def parse_response(self, response):
         results = parse_repeat_response(response)
+        if results == []:
+            if detect_refusal(response) == 1:
+                results = [response]
         return results
 
 
@@ -270,4 +276,7 @@ class RandomText(KnowExAttack):
 
     def parse_response(self, response):
         results = parse_repeat_response(response)
+        if results == []:
+            if detect_refusal(response) == 1:
+                results = [response]
         return results

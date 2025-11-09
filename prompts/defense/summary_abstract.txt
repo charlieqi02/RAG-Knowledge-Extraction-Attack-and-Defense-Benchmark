@@ -2,6 +2,9 @@ Based on the question and the context below, generate a concise summary of the r
 
 If the provided context is not relevant to the question, you must reply with NO_RELEVANT_CONTENT.
 
-Question: {Query}
+Question: {query} 
+
 Context: 
-{Retrieved Context}
+{context} 
+
+Answer:

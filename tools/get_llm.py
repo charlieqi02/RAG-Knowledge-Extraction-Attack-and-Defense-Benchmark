@@ -1,6 +1,7 @@
 import os, yaml
 
 from ._llm_engines import *
+from ._llama_engines import *
 
 
 def get_llm(model_name):
@@ -14,7 +15,9 @@ def get_llm(model_name):
                                 api_key=model_kwargs['api_key'],
                                 azure_endpoint=model_kwargs['azure_endpoint'],
                                 api_version=model_kwargs['api_version'])
+    elif model_name == "llama3-8B-I":
+        llm = LlamaEngine(model_name="meta-llama/Meta-Llama-3-8B-Instruct", device="cuda:0")
     else:
-        raise NotImplementedError
+        raise ValueError(f"Unknown model_name: {model_name}")
     
     return llm 

@@ -2,17 +2,16 @@ source set_env.sh
 rm -rf ./data/databases/debug
 python pipeline.py \
     --des "for debugging" \
-    --dataset "HealthCareMagic" \
+    --dataset "HarryPotter" \
     --rag "TextRAG" \
     --attack "RandomText" \
     --defense "None" \
     --seed 42 \
-    --debug \
-    --debug_len 100 \
     --gpu 0 \
     \
-    --ak_max_query  \
+    --ak_max_query 5 \
     \
+    --rg_generator "gpt4o-mini" \
     --rg_gen_kwargs_system_prompt "textrag/system.txt" \
     --rg_gen_kwargs_template "textrag/template.txt" \
     --rg_db_path "debug" \

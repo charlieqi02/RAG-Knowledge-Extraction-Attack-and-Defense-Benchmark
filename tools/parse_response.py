@@ -1,6 +1,7 @@
 import logging
 import re
 from typing import List
+from .attacks import detect_refusal
 
 def _strip_tail_noise(s: str) -> str:
     """

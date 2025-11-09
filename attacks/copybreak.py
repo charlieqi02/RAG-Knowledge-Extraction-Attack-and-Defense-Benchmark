@@ -13,7 +13,7 @@ from langchain.prompts import ChatPromptTemplate
 import pandas as pd
 
 from .base import KnowExAttack
-from tools.attacks import extract_indexes
+from tools.attacks import extract_indexes, detect_refusal
 from tools.get_embedding import get_embedding
 from tools.get_llm import get_llm
 from tools.parse_response import parse_repeat_response
@@ -94,8 +94,14 @@ class CopyBreak(KnowExAttack):
         logging.info(f"Exploration: current extracted chunks num={len(self.extracted_chunks)}")
         most_dissim_info = ""
         min_sim_score = np.inf
-        
-        prompt = ChatPromptTemplate.from_template(self.explore_template).format(context="\n".join(self.extracted_chunks))
+
+        # randomly select 50 extracted chunks
+        if len(self.extracted_chunks) > 50:
+            sampled_chunks = random.sample(list(self.extracted_chunks), 50)
+        else:
+            sampled_chunks = list(self.extracted_chunks)
+
+        prompt = ChatPromptTemplate.from_template(self.explore_template).format(context="\n".join(sampled_chunks))
         message = [{"role": "user", "content": prompt}]
         
         if first_time or len(self.unexploited_chunks) == 0:
@@ -138,7 +144,7 @@ class CopyBreak(KnowExAttack):
         self.unexploited_chunks.remove(anchor_chunk)
 
         prompt = ChatPromptTemplate.from_template(self.exploit_template).format(\
-            num=self.num_of_reason, num_total=2*self.num_of_reason, num_total=self.num_of_reason*50, chunk=anchor_chunk)
+            num=self.num_of_reason, num_total=2*self.num_of_reason, num_tokens=self.num_of_reason*50, chunk=anchor_chunk)
         
         message = [{"role": "user", "content": prompt}]
         response = self.attack_llm(message, temperature=self.exploit_temp)
@@ -163,6 +169,11 @@ class CopyBreak(KnowExAttack):
 
     def parse_response(self, response):
         results = parse_repeat_response(response)
+
+        if results == []:
+            if detect_refusal(response) == 1:
+                results = [response]
+            
         self._embed_unique_contents(results)
         return results
     
