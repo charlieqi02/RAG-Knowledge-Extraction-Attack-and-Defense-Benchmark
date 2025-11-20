@@ -288,10 +288,10 @@ class IKEA(KnowExAttack):
 
     def parse_response(self, response):
         self.current_response = response
+        self.query_response_pool.append((self.current_query, self.current_response))
         
         query_vec = self.attack_emb._embed(self.current_query)
         response_vec = self.attack_emb._embed(self.current_response)
-        
         
         if self.mut_flag == 1:
             # additional check for mutated (q,y)
@@ -310,27 +310,25 @@ class IKEA(KnowExAttack):
             self.mut_flag = 1  # assume mutation unless proven otherwise
             
             # detect irrelevant
-            sim_qy = cos_sim(query_vec, response_vec)
-            if sim_qy < self.thresh_qy_sim:
-                self.query_history_unrelated.append(self.current_query)
-                # update anchor sample score
-                for idx, (anchor, anchor_vec) in self.anchors.items():
-                    if cos_sim(anchor_vec, query_vec) >= self.thresh_irrelevant:
-                        self.anchor_sample_scores[int(idx)] -= self.penalty_irrelevant
-                self.mut_flag = 0
+            # sim_qy = cos_sim(query_vec, response_vec)
+            # if sim_qy < self.thresh_qy_sim:
+            #     self.query_history_unrelated.append(self.current_query)
+            #     # update anchor sample score
+            #     for idx, (anchor, anchor_vec) in self.anchors.items():
+            #         if cos_sim(anchor_vec, query_vec) >= self.thresh_irrelevant:
+            #             self.anchor_sample_scores[int(idx)] -= self.penalty_irrelevant
+            #     self.mut_flag = 0
             
             # detect refusal
-            if detect_refusal(self.attack_llm, self.current_response) == 0:
+            if detect_refusal(self.current_response) == 0:
                 self.query_history_outlier.append(self.current_query)
                 # update anchor sample score
                 for idx, (anchor, anchor_vec) in self.anchors.items():
                     if cos_sim(anchor_vec, query_vec) >= self.thresh_outlier:
                         self.anchor_sample_scores[int(idx)] -= self.penalty_refusal
                 self.mut_flag = 0
+                return []
 
-
-        self.query_response_pool.append((self.current_query, self.current_response))
-            
         return [response]
     
 

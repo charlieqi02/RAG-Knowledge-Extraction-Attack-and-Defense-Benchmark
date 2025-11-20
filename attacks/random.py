@@ -59,6 +59,7 @@ class RandomEmb(KnowExAttack):
             self.info_prompt = f.read()
         
         extra_dir = os.environ.get("EXTRA_PATH")
+        args.random_vec = args.random_vec.split(".")[0] + f"_wiki_{args.emb_model}.csv"
         vec_df = pd.read_csv(os.path.join(extra_dir, args.random_vec))
         self.random_vec = self._get_distribution_of_embeddings(vec_df['mean'].values, vec_df['variance'].values, vectors_num=args.max_query)
         
