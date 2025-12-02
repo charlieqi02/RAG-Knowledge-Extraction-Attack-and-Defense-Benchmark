@@ -67,7 +67,7 @@ class Gte_smallEmbeddings:
     def __init__(self, device="cuda"):
         self.tokenizer = AutoTokenizer.from_pretrained("thenlper/gte-small")
         self.model = AutoModel.from_pretrained("thenlper/gte-small").to(device)
-        self.Dim = 384
+        self.dim = 384
         self.model.eval()
         self.device = device
 
@@ -95,7 +95,7 @@ class Gte_baseEmbeddings:
     def __init__(self, device="cuda"):
         self.tokenizer = AutoTokenizer.from_pretrained("thenlper/gte-base")
         self.model = AutoModel.from_pretrained("thenlper/gte-base").to(device)
-        self.Dim = 768
+        self.dim = 768
         self.model.eval()
         self.device = device
 
@@ -123,7 +123,7 @@ class Gte_largeEmbeddings:
     def __init__(self, device="cuda"):
         self.tokenizer = AutoTokenizer.from_pretrained("thenlper/gte-large")
         self.model = AutoModel.from_pretrained("thenlper/gte-large").to(device)
-        self.Dim = 1024
+        self.dim = 1024
         self.model.eval()
         self.device = device
 
@@ -152,7 +152,7 @@ class MpnetEmbeddings:
         self.tokenizer = AutoTokenizer.from_pretrained('sentence-transformers/all-mpnet-base-v2')
         self.model = AutoModel.from_pretrained('sentence-transformers/all-mpnet-base-v2').to(device)
         self.device = device
-        self.Dim = 768
+        self.dim = 768
         self.model.eval()
 
     def embed_documents(self, texts):
@@ -173,3 +173,45 @@ class MpnetEmbeddings:
         token_embeddings = model_output[0]  # First element of model_output contains all token embeddings
         input_mask_expanded = attention_mask.unsqueeze(-1).expand(token_embeddings.size()).float()
         return torch.sum(token_embeddings * input_mask_expanded, 1) / torch.clamp(input_mask_expanded.sum(1), min=1e-9)
+
+
+
+class Bge_largeEmbeddings:
+    def __init__(self, device="cuda"):
+        self.tokenizer = AutoTokenizer.from_pretrained("BAAI/bge-large-en-v1.5")
+        self.model = AutoModel.from_pretrained("BAAI/bge-large-en-v1.5").to(device)
+        self.dim = 1024
+        self.model.eval()
+        self.device = device
+
+    def embed_documents(self, texts):
+        return [self._embed("passage: " + text) for text in texts]
+
+    def embed_query(self, text):
+        return self._embed("query: " + text)
+
+    def _embed(self, text):
+        encoded_input = self.tokenizer(
+            text, max_length=512, padding=True, truncation=True, return_tensors='pt'
+        ).to(self.device)
+        with torch.no_grad():
+            model_output = self.model(**encoded_input)
+            # BGE官方推荐使用 [CLS] pooling
+            sentence_embeddings = model_output.last_hidden_state[:, 0, :]
+            sentence_embeddings = F.normalize(sentence_embeddings, p=2, dim=1)
+        return sentence_embeddings.cpu().numpy().flatten().tolist()
+
+    def _mean_pooling(self, last_hidden_states, attention_mask):
+        last_hidden = last_hidden_states.masked_fill(~attention_mask[..., None].bool(), 0.0)
+        return last_hidden.sum(dim=1) / attention_mask.sum(dim=1)[..., None]
+    
+    
+
+# if __name__ == "__main__":
+#     model = Bge_largeEmbeddings(device="cuda")
+#     texts = ["This is a test sentence.", "Another sentence for embedding."]
+#     embeddings = model.embed_documents(texts)
+#     for i, emb in enumerate(embeddings):
+#         print(f"Text {i}: {texts[i]}")
+#         print(f"Embedding {i} dimension: {len(emb)}")
+#         print(f"Embedding {i}: {emb[:5]}...")  # Print first 5 dimensions

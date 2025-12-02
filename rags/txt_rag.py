@@ -4,7 +4,10 @@ import logging
 from langchain_community.vectorstores import Chroma
 from langchain.docstore.document import Document
 from langchain.prompts import ChatPromptTemplate
+import openai
 from tqdm import tqdm
+import torch
+import torch.nn.functional as F
 
 from .base import RAGSystem
 
@@ -103,8 +106,13 @@ class TextRAG(RAGSystem):
             {'role': 'system', 'content': self.system_prompt},
             {"role": "user", "content": prompt}
         ]
-        response = self.generator(messages, temperature=self.gen_kwargs.temperature)
-            
+        try: 
+            response = self.generator(messages, temperature=self.gen_kwargs.temperature)
+        except:
+            logging.error(f"Too long error")
+            logging.info("prompt length: %d", len(prompt))
+            logging.info("prompt content: %s", prompt)
+            response = "Error: The generated prompt is too long for the model to process." 
         return response, retrieved_docs
 
 
@@ -121,8 +129,23 @@ class TextRAG(RAGSystem):
             threshold = self.retr_kwargs.threshold
             topk = self.retr_kwargs.topk
             retrieved_docs = self.db.similarity_search_with_score(query, k=topk)
-            docs = [doc for doc in retrieved_docs if doc[1] >= threshold] if retrieved_docs else []
+            docs = []
+            
+            if retrieved_docs:
+                # 假设 retrieved_docs = [(Document, score), ...]
+                # 计算 query 向量
+                query_emb = self.retriever._embed(query)
+                query_emb = torch.tensor(query_emb, dtype=torch.float32)
+                query_emb = F.normalize(query_emb, p=2, dim=0)
 
+                for doc, _ in retrieved_docs:
+                    doc_emb = self.retriever._embed(doc.page_content)
+                    doc_emb = torch.tensor(doc_emb, dtype=torch.float32)
+                    doc_emb = F.normalize(doc_emb, p=2, dim=0)
+
+                    cos_sim = torch.dot(query_emb, doc_emb).item()
+                    if cos_sim >= threshold:
+                        docs.append((doc, cos_sim))
         else:
             raise NotImplementedError("Only support topk or threshold based retrieval.")
             

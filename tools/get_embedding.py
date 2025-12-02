@@ -11,6 +11,10 @@ def get_embedding(model_name, device="cuda"):
     
     if model_name == "MiniLM":
         embedding_model = MiniLMEmbeddings(device=device)
+    elif model_name == "GTE-base":
+        embedding_model = Gte_baseEmbeddings(device=device)
+    elif model_name == "BGE-large":
+        embedding_model = Bge_largeEmbeddings(device=device)
     else:
         raise NotImplementedError
 

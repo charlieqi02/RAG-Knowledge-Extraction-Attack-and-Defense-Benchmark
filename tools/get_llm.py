@@ -16,7 +16,7 @@ def get_llm(model_name):
                                 azure_endpoint=model_kwargs['azure_endpoint'],
                                 api_version=model_kwargs['api_version'])
     elif model_name == "llama3-8B-I":
-        llm = LlamaEngine(model_name="meta-llama/Meta-Llama-3-8B-Instruct", device="cuda:0")
+        llm = LlamaEngine(model_name="meta-llama/Meta-Llama-3.1-8B-Instruct", device="cuda:0")
     else:
         raise ValueError(f"Unknown model_name: {model_name}")
     

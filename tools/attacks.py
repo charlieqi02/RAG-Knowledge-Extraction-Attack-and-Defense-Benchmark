@@ -1,6 +1,7 @@
 import numpy as np
 import re 
 import json
+from .get_llm import get_llm
 
 
 def extract_indexes(text):
@@ -56,7 +57,7 @@ def parse_anchor_words(raw: str):
     return list(set([w.strip() for w in words if w and len(w.strip()) <= 80]))
 
 
-def detect_refusal(llm, content: str) -> int:
+def detect_refusal(content: str) -> int:
     system_prompt = (
         "You are a strict binary classifier. Your task is to determine whether a "
         "given text is a refusal response or a genuine informative response.\n\n"
@@ -66,6 +67,8 @@ def detect_refusal(llm, content: str) -> int:
     )
 
     user_prompt = f'Text:\n"{content}"\n\nAnswer:'
+
+    llm = get_llm("gpt4o-mini")
 
     response = llm(
         messages=[

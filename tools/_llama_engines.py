@@ -2,10 +2,8 @@ import os
 import torch
 from typing import List, Dict, Optional
 from pydantic import ValidationError
-from transformers import (
-    AutoTokenizer,
-    AutoModelForCausalLM,
-)
+
+from unsloth import FastLanguageModel  # ✅ 新增：Unsloth
 
 from smolagents.models import MessageRole, get_clean_message_list
 
@@ -78,7 +76,7 @@ def llama_format_messages_for_tokenizer(messages: List[Dict], tokenizer) -> str:
 
 class LlamaEngine:
     """
-    Local Llama inference engine using HuggingFace Transformers.
+    Local Llama inference engine using Unsloth (FastLanguageModel).
 
     Goal:
     - Same high-level API as your OpenAIEngine/AnthropicEngine:
@@ -90,9 +88,9 @@ class LlamaEngine:
     def __init__(
         self,
         model_name: str = None,
-        device: Optional[str] = None,
+        device: Optional[str] = "cuda",
         dtype: Optional[torch.dtype] = torch.float16,
-        max_new_tokens: int = 512,
+        max_new_tokens: int = 8192,
     ):
         """
         model_name: HF model id or local path, e.g. "meta-llama/Llama-3-8B-Instruct"
@@ -101,9 +99,10 @@ class LlamaEngine:
         max_new_tokens: default generation length
         """
 
-        self.model_name = model_name or os.getenv("LLAMA_MODEL_NAME", "meta-llama/Llama-3-8B-Instruct")
+        self.model_name = model_name or os.getenv("LLAMA_MODEL_NAME", "meta-llama/Meta-Llama-3.1-8B-Instruct")
         self.max_new_tokens = max_new_tokens
 
+        # device 只用来放 inputs，模型由 Unsloth 自己管理
         if device is None:
             if torch.cuda.is_available():
                 device = "cuda"
@@ -111,21 +110,37 @@ class LlamaEngine:
                 device = "cpu"
         self.device = device
 
-        # Load tokenizer & model
-        self.tokenizer = AutoTokenizer.from_pretrained(
-            self.model_name,
-            use_fast=True,
+        # -------- Unsloth: from_pretrained --------
+        # 将 torch.dtype 转成 Unsloth 习惯的字符串（也可以直接用 None，让 Unsloth 自适应）
+        if isinstance(dtype, torch.dtype):
+            if dtype == torch.float16:
+                unsloth_dtype = "float16"
+            elif dtype == torch.bfloat16:
+                unsloth_dtype = "bfloat16"
+            elif dtype == torch.float32:
+                unsloth_dtype = "float32"
+            else:
+                unsloth_dtype = None
+        else:
+        # 如果用户直接传字符串，原样给 Unsloth
+            unsloth_dtype = dtype
+
+        # 如果是 GPU，默认用 4bit；CPU 上就不开 4bit（一般也没啥意义）
+        load_in_4bit = "cuda" in self.device
+
+        # 这里给个常用 max_seq_length；你需要的话可以改成参数
+        max_seq_length = 4096
+
+        # ✅ 用 Unsloth 加载模型 & tokenizer
+        self.model, self.tokenizer = FastLanguageModel.from_pretrained(
+            model_name=self.model_name,
+            max_seq_length=max_seq_length,
+            dtype=unsloth_dtype,
+            load_in_4bit=load_in_4bit,
         )
 
-        self.model = AutoModelForCausalLM.from_pretrained(
-            self.model_name,
-            torch_dtype=dtype,
-            device_map="auto" if "cuda" in device else None,
-        )
-        # If device_map="auto", model is sharded across GPUs if multiple are available.
-        # On CPU-only, you may want .to(self.device) instead:
-        if "cuda" not in device:
-            self.model.to(self.device)
+        # 设定为 inference 模式（会关掉 dropout 等）
+        FastLanguageModel.for_inference(self.model)
 
         # optional metrics collection similar to AzureOpenAIEngine
         self.metrics = {
@@ -143,7 +158,7 @@ class LlamaEngine:
         top_p: float = 0.95,
     ) -> str:
         """
-        Generate a reply from the local Llama model.
+        Generate a reply from the local Llama model (via Unsloth).
 
         messages: [{"role":"system"/"user"/"assistant", "content": "..."}]
         stop_sequences: list of strings -> we'll manually truncate after generation
@@ -166,7 +181,7 @@ class LlamaEngine:
         # track prompt token count
         prompt_token_count = inputs["input_ids"].shape[-1]
 
-        # 4) generate
+        # 4) generate （Unsloth 的模型接口跟 HF 一样）
         gen_out = self.model.generate(
             **inputs,
             max_new_tokens=max_new_tokens or self.max_new_tokens,
@@ -203,3 +218,49 @@ class LlamaEngine:
             "prompt_tokens": 0,
             "completion_tokens": 0,
         }
+
+
+
+
+if __name__ == "__main__":
+    print("=== Testing LlamaEngine with Unsloth + Llama 3.1 8B Instruct ===")
+
+    # 你指定的模型
+    model_name = "meta-llama/Meta-Llama-3.1-8B-Instruct"
+
+    engine = LlamaEngine(
+        model_name=model_name,
+        device="cuda" if torch.cuda.is_available() else "cpu",
+    )
+
+    # 测试消息格式
+    messages = [
+        {"role": "system", "content": "You are a concise and helpful AI assistant."},
+        {"role": "user", "content": "Explain what Llama 3.1 is in two sentences."},
+    ]
+
+    print("\n--- Sending message to LlamaEngine ---")
+    output = engine(
+        messages,
+        temperature=0.7,
+    )
+
+    print("\n=== Model Output ===")
+    print(output)
+
+    print("\n=== Metrics After First Call ===")
+    print(engine.metrics)
+
+    # 再测试一次连续对话
+    print("\n--- Follow-up message ---")
+    messages.append({"role": "assistant", "content": output})
+    messages.append({"role": "user", "content": "Summarize the key points in one sentence."})
+
+    follow_up = engine(messages)
+    print("\n=== Follow-up Output ===")
+    print(follow_up)
+
+    print("\n=== Final Metrics ===")
+    print(engine.metrics)
+
+    print("\n=== Test Finished ===")
