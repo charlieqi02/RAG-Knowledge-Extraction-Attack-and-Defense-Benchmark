@@ -99,7 +99,7 @@ class LlamaEngine:
         max_new_tokens: default generation length
         """
 
-        self.model_name = model_name or os.getenv("LLAMA_MODEL_NAME", "meta-llama/Meta-Llama-3.1-8B-Instruct")
+        self.model_name = model_name
         self.max_new_tokens = max_new_tokens
 
         # device 只用来放 inputs，模型由 Unsloth 自己管理
@@ -125,7 +125,7 @@ class LlamaEngine:
         # 如果用户直接传字符串，原样给 Unsloth
             unsloth_dtype = dtype
 
-        # 如果是 GPU，默认用 4bit；CPU 上就不开 4bit（一般也没啥意义）
+        # 如果是 GPU，默认用 4bit；CPU 上就不开 4bit
         load_in_4bit = "cuda" in self.device
 
         # 这里给个常用 max_seq_length；你需要的话可以改成参数
@@ -165,39 +165,39 @@ class LlamaEngine:
         temperature, top_p: sampling params
         max_new_tokens: override default length
         """
-
-        # 1) normalize roles / clean tool messages like other engines do
         messages = get_clean_message_list(messages, role_conversions=openai_role_conversions)
-
-        # 2) build the chat prompt
         prompt_text = llama_format_messages_for_tokenizer(messages, self.tokenizer)
 
-        # 3) tokenize
+        # 1) determine model max context
+        max_prompt_tokens = 4000
+
+        # 4) tokenize with truncation
         inputs = self.tokenizer(
             prompt_text,
             return_tensors="pt",
-        ).to(self.device)
-
-        # track prompt token count
-        prompt_token_count = inputs["input_ids"].shape[-1]
-
-        # 4) generate （Unsloth 的模型接口跟 HF 一样）
-        gen_out = self.model.generate(
-            **inputs,
-            max_new_tokens=max_new_tokens or self.max_new_tokens,
-            do_sample=True,
-            temperature=temperature,
-            top_p=top_p,
-            eos_token_id=self.tokenizer.eos_token_id,
+            truncation=True,
+            max_length=max_prompt_tokens,
         )
-
-        # 5) decode ONLY the newly generated part
-        full_text = self.tokenizer.decode(gen_out[0], skip_special_tokens=True)
-
-        # naive way to get only completion: drop the prompt prefix
-        completion_text = full_text[len(prompt_text):]
-
-        # 6) apply manual stop sequences
+        inputs = {k: v.to(self.device) for k, v in inputs.items()}
+        prompt_token_count = inputs["input_ids"].shape[-1]
+        
+        # 4) generate （Unsloth 的模型接口跟 HF 一样）
+        with torch.no_grad():
+            gen_out = self.model.generate(
+                **inputs,
+                max_new_tokens=max_new_tokens or self.max_new_tokens,
+                do_sample=True,
+                temperature=temperature,
+                top_p=top_p
+            )
+        
+        # 5) decode & apply stop sequences
+        # ✅ 用 token 级别来切分：先取出生成的所有 token
+        generated_ids = gen_out[0]
+        input_len = inputs["input_ids"].shape[-1]
+        new_tokens = generated_ids[input_len:]
+        # 再 decode 这部分
+        completion_text = self.tokenizer.decode(new_tokens, skip_special_tokens=True)
         completion_text = apply_stop_sequences(completion_text, stop_sequences)
 
         # Update metrics like AzureOpenAIEngine
@@ -226,7 +226,10 @@ if __name__ == "__main__":
     print("=== Testing LlamaEngine with Unsloth + Llama 3.1 8B Instruct ===")
 
     # 你指定的模型
-    model_name = "meta-llama/Meta-Llama-3.1-8B-Instruct"
+    # "Qwen/Qwen2.5-7B-Instruct"
+    # "Qwen/Qwen2-7B-Instruct"
+    # "meta-llama/Meta-Llama-3.1-8B-Instruct"
+    model_name = "Qwen/Qwen2.5-7B-Instruct"
 
     engine = LlamaEngine(
         model_name=model_name,
@@ -236,13 +239,13 @@ if __name__ == "__main__":
     # 测试消息格式
     messages = [
         {"role": "system", "content": "You are a concise and helpful AI assistant."},
-        {"role": "user", "content": "Explain what Llama 3.1 is in two sentences."},
+        {"role": "user", "content": "What is the capital of France?"},
     ]
 
-    print("\n--- Sending message to LlamaEngine ---")
+    print(f"\n--- Sending message to {model_name} ---")
     output = engine(
         messages,
-        temperature=0.7,
+        temperature=0.1,
     )
 
     print("\n=== Model Output ===")
@@ -250,17 +253,3 @@ if __name__ == "__main__":
 
     print("\n=== Metrics After First Call ===")
     print(engine.metrics)
-
-    # 再测试一次连续对话
-    print("\n--- Follow-up message ---")
-    messages.append({"role": "assistant", "content": output})
-    messages.append({"role": "user", "content": "Summarize the key points in one sentence."})
-
-    follow_up = engine(messages)
-    print("\n=== Follow-up Output ===")
-    print(follow_up)
-
-    print("\n=== Final Metrics ===")
-    print(engine.metrics)
-
-    print("\n=== Test Finished ===")

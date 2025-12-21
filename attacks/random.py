@@ -241,7 +241,7 @@ class RandomText(KnowExAttack):
         self.attack_template = args.attack_template    # Instraction for reproducing
 
         # for content generation
-        self.llm = get_llm(args.llm_model)
+        self.attack_llm = get_llm(args.llm_model)
         
         self.random_template = args.template
         self.random_system_prompt = args.system_prompt
@@ -268,7 +268,7 @@ class RandomText(KnowExAttack):
             {"role": "user", "content": self.random_template},
         ]
 
-        info_prompt = self.llm(messages, temperature=self.random_temperature)
+        info_prompt = self.attack_llm(messages, temperature=self.random_temperature)
         query = self.attack_template.replace("<info>", info_prompt)
         logging.info(f"Query {query_id}: {query}")
 

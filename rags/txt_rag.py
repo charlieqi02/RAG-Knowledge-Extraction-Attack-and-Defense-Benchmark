@@ -111,7 +111,7 @@ class TextRAG(RAGSystem):
         except:
             logging.error(f"Too long error")
             logging.info("prompt length: %d", len(prompt))
-            logging.info("prompt content: %s", prompt)
+            logging.info("prompt content: %s", prompt[:100])
             response = "Error: The generated prompt is too long for the model to process." 
         return response, retrieved_docs
 

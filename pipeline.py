@@ -87,6 +87,7 @@ def pipeline(args):
                            response, 
                            retrieved_docs, 
                            extracted_info, 
+                           args, rag, attack,
                            times=(t0, t1, t2, t3))
         
         pbar.update(1)
@@ -94,6 +95,8 @@ def pipeline(args):
         
     # recorder.close_writer()
     # recorder.print_performance()
+    recorder.print_cost(args, rag, attack)
+    logging.info("Knowledge extraction pipeline finished.")
 
 
 if __name__ == "__main__":
