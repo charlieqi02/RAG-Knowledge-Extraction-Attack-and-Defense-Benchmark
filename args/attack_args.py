@@ -125,6 +125,12 @@ def get_attack_args(p, attack):
             "--ak_allow_non_ascii", dest="ak.allow_non_ascii", default=False, action='store_true', help="Allow non-ascii characters in the query for RandomEmb attack")
         p.add_argument(
             "--ak_info_prompt", dest="ak.info_prompt", default="default", type=str, help="Info prompt path for RandomEmb attack")
+
+    elif attack == "Utility":
+        p.add_argument(
+            "--ak_data_path", dest="ak.data_path", default="", type=str, help="Path to utility questions JSONL file for Utility attack")
+        
+
         
 
     return p
