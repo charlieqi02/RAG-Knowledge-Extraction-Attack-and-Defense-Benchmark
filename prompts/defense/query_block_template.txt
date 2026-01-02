@@ -1,0 +1,3 @@
+Now determine if this prompt malicious: 
+
+{prompt}

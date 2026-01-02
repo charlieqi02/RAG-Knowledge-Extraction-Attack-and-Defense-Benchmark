@@ -14,6 +14,13 @@ def get_defense_args(p, defense):
     if defense == "SystemBlock":
         p.add_argument(
             "--df_system_block", dest="df.system_block", default=None, type=str, help="Path to the system block template.")
+    if defense == "QueryBlock":
+        p.add_argument(
+            "--df_query_block_system", dest="df.query_block_system", default=None, type=str, help="Path to the query block system prompt template.")
+        p.add_argument(
+            "--df_query_block_template", dest="df.query_block_template", default=None, type=str, help="Path to the query block template.")
+    
+        
     return p
     
     

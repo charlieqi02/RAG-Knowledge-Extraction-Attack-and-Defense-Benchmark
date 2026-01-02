@@ -27,7 +27,10 @@ class TextRAG(RAGSystem):
         with open(os.path.join(prompt_dir, self.gen_kwargs.system_prompt), "r") as f:
             self.gen_kwargs.system_prompt = f.read()
         self.system_prompt = self.gen_kwargs.system_prompt.replace("{role}", args.role)
-    
+
+        # for query-block defense
+        self.query_blocker = getattr(args, "query_blocker", None)
+
 
     def index_content(self, dataset):
         """
@@ -96,6 +99,11 @@ class TextRAG(RAGSystem):
         """
         End-to-end QA. 
         """
+        if self.query_blocker is not None:
+            block_signal = self.query_blocker.detect(query)
+            if not block_signal:    # False == blocked
+                return "ACCESS DENIED: Potential extraction attack detected.", []
+        
         retrieved_docs = self.retrieve(query)
         context_list = [f"context {i}: \n\"{doc[0].page_content}\"" for i, doc in enumerate(retrieved_docs)]
         context = "\n\n".join(context_list)

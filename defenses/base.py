@@ -1,6 +1,6 @@
 import os 
 import numpy as np
-
+from defenses.queryblock import QueryBlockerDefense
 
 
 
@@ -16,3 +16,9 @@ class DefenseBase:
             args.rg.gen_kwargs.system_prompt = df_args.system_block
         if args.defense == "Threshold":
             args.rg.retr_kwargs.threshold = df_args.threshold
+            
+        if args.defense == "QueryBlock":
+            args.rg.query_blocker = QueryBlockerDefense(
+                df_args.query_block_system,
+                df_args.query_block_template
+            )
