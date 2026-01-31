@@ -68,7 +68,7 @@ def detect_refusal(content: str) -> int:
 
     user_prompt = f'Text:\n"{content}"\n\nAnswer:'
 
-    llm = get_llm("gpt4o-mini")
+    llm = get_llm("gpt4o-mini-openai")
 
     response = llm(
         messages=[

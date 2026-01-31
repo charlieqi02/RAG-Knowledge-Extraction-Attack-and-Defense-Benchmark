@@ -2,7 +2,8 @@ import os
 from time import sleep
 
 import openai
-from anthropic import Anthropic, AnthropicBedrock
+# from google import genai
+from anthropic import Anthropic, AnthropicVertex
 from openai import AzureOpenAI, OpenAI
 from pydantic import BaseModel
 from smolagents.models import MessageRole, get_clean_message_list
@@ -12,66 +13,110 @@ openai_role_conversions = {MessageRole.TOOL_RESPONSE: MessageRole.USER}
 
 
 class OpenAIEngine:
-    def __init__(self, model_name="gpt-4o"):
+    def __init__(self, model_name="gpt-4o", api_key=None):
         self.model_name = model_name
         self.client = OpenAI(
-            api_key=os.getenv("OPENAI_API_KEY"),
+            api_key=api_key or os.getenv("OPENAI_API_KEY"),
         )
+        
+        self.metrics = {
+            "num_calls": 0,
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+        }
+        
 
-    def __call__(self, messages, stop_sequences=[]):
+    def __call__(self, messages, stop_sequences=[], temperature=0.5, *args, **kwargs):
         messages = get_clean_message_list(messages, role_conversions=openai_role_conversions)
 
         response = self.client.chat.completions.create(
             model=self.model_name,
             messages=messages,
             stop=stop_sequences,
-            temperature=0.5,
+            temperature=temperature,
+            store=True,
+            metadata =  {
+                "user": "ZhishengQi",
+                "project": "Knowledge-Extraction-Attacks-and-Defenses-on-RAG",
+            },
+            *args,
+            **kwargs,
         )
+        
+        self.metrics["num_calls"] += 1
+        self.metrics["prompt_tokens"] += response.usage.prompt_tokens
+        self.metrics["completion_tokens"] += response.usage.completion_tokens
+        
         return response.choices[0].message.content
+    
+    def reset(self):
+        self.metrics = {
+            "num_calls": 0,
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+        }
 
 
-class AnthropicEngine:
-    def __init__(self, model_name="claude-3-5-sonnet-20240620", use_bedrock=False):
+
+class AnthropicVertexEngine:
+    def __init__(
+        self, model_name: str = "claude-3-5-sonnet-v2@20241022",
+        project_id: str = "", region: str = ""
+    ):
         self.model_name = model_name
-        if use_bedrock:  # Cf this page: https://docs.anthropic.com/en/api/claude-on-amazon-bedrock
-            self.model_name = "anthropic.claude-3-5-sonnet-20240620-v1:0"
-            self.client = AnthropicBedrock(
-                aws_access_key=os.getenv("AWS_BEDROCK_ID"),
-                aws_secret_key=os.getenv("AWS_BEDROCK_KEY"),
-                aws_region="us-east-1",
-            )
-        else:
-            self.client = Anthropic(
-                api_key=os.getenv("ANTHROPIC_API_KEY"),
-            )
+        self.project_id = project_id
+        self.region = region
 
-    def __call__(self, messages, stop_sequences=[]):
+        self.client = AnthropicVertex(region=self.region, project_id=self.project_id)
+
+    def __call__(
+        self, messages, stop_sequences=None, temperature: float = 0, max_tokens: int = 4096,
+        *args, **kwargs,
+    ):
+        if stop_sequences is None:
+            stop_sequences = []
+
+        # Normalize messages (same as your other engines)
         messages = get_clean_message_list(messages, role_conversions=openai_role_conversions)
-        index_system_message, system_prompt = None, None
+
+        # Extract system prompt (keep your current logic)
+        index_system_message, system_prompt = "", ""
         for index, message in enumerate(messages):
             if message["role"] == MessageRole.SYSTEM:
                 index_system_message = index
                 system_prompt = message["content"]
-        if system_prompt is None:
-            raise Exception("No system prompt found!")
+                break
 
-        filtered_messages = [message for i, message in enumerate(messages) if i != index_system_message ]
+        filtered_messages = [m for i, m in enumerate(messages) if i != index_system_message]
         if len(filtered_messages) == 0:
-            print("Error, no user message:", messages)
-            assert False
+            raise Exception(f"Error: no non-system message found! messages={messages}")
+
+        # Anthropic expects roles "user"/"assistant" (and possibly tool roles depending on SDK).
+        # We'll pass through user/assistant, and coerce anything else to "user" to be safe.
+        vertex_messages = []
+        for m in filtered_messages:
+            role = m.get("role")
+            if role not in (MessageRole.USER, MessageRole.ASSISTANT):
+                role = MessageRole.USER
+            vertex_messages.append({"role": role, "content": m["content"]})
 
         response = self.client.messages.create(
             model=self.model_name,
             system=system_prompt,
-            messages=filtered_messages,
+            messages=vertex_messages,
+            max_tokens=max_tokens,
+            temperature=temperature,
             stop_sequences=stop_sequences,
-            temperature=0.5,
-            max_tokens=2000,
+            *args,
+            **kwargs,
         )
+
+        # In Anthropic SDK, response.content is a list of blocks; text blocks have .text
         full_response_text = ""
-        for content_block in response.content:
-            if content_block.type == "text":
-                full_response_text += content_block.text
+        for block in response.content:
+            if getattr(block, "type", None) == "text":
+                full_response_text += block.text
+
         return full_response_text
 
 
@@ -172,3 +217,69 @@ class StructuredOutputAzureOpenAIEngine(AzureOpenAIEngine):
         self.metrics["completion_tokens"] += response.usage.completion_tokens
 
         return response.choices[0].message.parsed
+
+
+
+# class GeminiEngine:
+#     def __init__(
+#         self, model_name: str = "gemini-3-flash", project_id="", location=""):
+#         self.model_name = model_name
+#         self.project_id = project_id
+#         self.location = location
+
+#         # Vertex AI client (uses Application Default Credentials)
+#         self.client = genai.Client(
+#             vertexai=True,
+#             project=self.project_id,
+#             location=self.location,
+#         )
+
+#         self.metrics = {
+#             "num_calls": 0,
+#             "prompt_tokens": 0,
+#             "completion_tokens": 0,
+#         }
+
+#     def __call__(self, messages, stop_sequences=None, temperature=0.5, *args, **kwargs):
+#         if stop_sequences is None:
+#             stop_sequences = []
+
+#         # Normalize messages (same as OpenAI / Anthropic engines)
+#         messages = get_clean_message_list(messages)
+
+#         # Gemini expects a flat list of contents (system + user merged)
+#         contents = []
+#         for msg in messages:
+#             if msg["role"] == MessageRole.SYSTEM:
+#                 contents.append(f"[SYSTEM]\n{msg['content']}")
+#             else:
+#                 contents.append(msg["content"])
+
+#         response = self.client.models.generate_content(
+#             model=self.model_name,
+#             contents=contents,
+#             generation_config={
+#                 "temperature": temperature,
+#                 "stop_sequences": stop_sequences,
+#             },
+#             *args,
+#             **kwargs,
+#         )
+
+#         # Update metrics if available
+#         if hasattr(response, "usage_metadata"):
+#             usage = response.usage_metadata
+#             self.metrics["num_calls"] += 1
+#             self.metrics["prompt_tokens"] += usage.prompt_token_count or 0
+#             self.metrics["completion_tokens"] += usage.candidates_token_count or 0
+#         else:
+#             self.metrics["num_calls"] += 1
+
+#         return response.text
+
+#     def reset(self):
+#         self.metrics = {
+#             "num_calls": 0,
+#             "prompt_tokens": 0,
+#             "completion_tokens": 0,
+#         }
