@@ -63,6 +63,25 @@ def load_from_local(data_path, dataset, debug_len=None):
         data = {
             "index_content": index_content
         }
+        
+    elif dataset == "EnronChunk":
+        data_dir = os.path.join(data_path, "Sampled", "Enron")
+        data_file = os.path.join(data_dir, "enron_1500_chunks.csv")
+        df = pd.read_csv(data_file)
+        index_content = {str(idx): row['chunk'] for idx, row in df.iterrows()}
+        data = {
+            "index_content": index_content
+        }
+    elif dataset == "HealthCareMagicChunk":
+        data_dir = os.path.join(data_path, "Sampled", "HealthCareMagic")
+        data_file = os.path.join(data_dir, "HealthCareMagic_500_chunks.csv")
+        df = pd.read_csv(data_file)
+        index_content = {str(idx): row['chunk'] for idx, row in df.iterrows()}
+        data = {
+            "index_content": index_content
+        }
+        
+        
     return data
         
 
