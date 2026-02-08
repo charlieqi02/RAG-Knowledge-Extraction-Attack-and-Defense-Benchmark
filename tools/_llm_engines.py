@@ -34,11 +34,6 @@ class OpenAIEngine:
             messages=messages,
             stop=stop_sequences,
             temperature=temperature,
-            # store=True,
-            # metadata =  {
-            #     "user": "ZhishengQi",
-            #     "project": "Knowledge-Extraction-Attacks-and-Defenses-on-RAG",
-            # },
             *args,
             **kwargs,
         )
@@ -152,11 +147,6 @@ class AzureOpenAIEngine:
                     messages=messages,
                     # stop=stop_sequences,
                     temperature=temperature,
-                    store=True,
-                    metadata =  {
-                        "user": "ZhishengQi",
-                        "project": "Knowledge-Extraction-Attacks-and-Defenses-on-RAG",
-                    },
                     *args,
                     **kwargs
                 )
