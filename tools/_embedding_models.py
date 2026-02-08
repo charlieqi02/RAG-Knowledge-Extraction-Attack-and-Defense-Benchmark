@@ -196,7 +196,7 @@ class Bge_largeEmbeddings:
         ).to(self.device)
         with torch.no_grad():
             model_output = self.model(**encoded_input)
-            # BGE官方推荐使用 [CLS] pooling
+            # BGE officially recommends [CLS] pooling
             sentence_embeddings = model_output.last_hidden_state[:, 0, :]
             sentence_embeddings = F.normalize(sentence_embeddings, p=2, dim=1)
         return sentence_embeddings.cpu().numpy().flatten().tolist()

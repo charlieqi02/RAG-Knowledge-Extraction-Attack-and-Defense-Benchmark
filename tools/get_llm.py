@@ -57,7 +57,7 @@ def get_llm(model_name):
 if __name__ == "__main__":
     import os
     import sys
-    pwd = "/home/charq/Lab-UO/Projects/Extraction-AD-Pipeline"
+    pwd = "./Extraction-AD-Pipeline"
     os.environ["PYTHONPATH"] = pwd + ":" + os.environ.get("PYTHONPATH", "")
     os.environ["KEYS_PATH"] = pwd + "/keys.yaml"
     sys.path.append(pwd)

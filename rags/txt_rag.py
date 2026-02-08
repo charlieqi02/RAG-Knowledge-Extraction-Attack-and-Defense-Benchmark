@@ -44,7 +44,7 @@ class TextRAG(RAGSystem):
         expected_count = len(index_content)
         logging.info(f"Preparing to index {expected_count} documents into {persist_dir}")
 
-        # 判断是否已有数据库
+        # Check if database already exists
         db_exists = any(name.endswith(".sqlite3") for name in os.listdir(persist_dir))
 
         if db_exists:
@@ -61,8 +61,8 @@ class TextRAG(RAGSystem):
             self.db = db
             return
 
-        # --- 如果数据库还不存在，创建并分批插入 ---
-        # 先把所有文本和元数据准备好
+        # --- If database doesn't exist yet, create and insert in batches ---
+        # Prepare all texts and metadata first
         texts = []
         metadatas = []
         for cid, content in index_content.items():
@@ -76,8 +76,8 @@ class TextRAG(RAGSystem):
             collection_name="v_db"
         )
 
-        # 分批 upsert，避免一次塞太多
-        batch_size = 5000  # 安全批大小，小于 5461 的限制
+        # Batch upsert to avoid inserting too many at once
+        batch_size = 5000  # Safe batch size, below the 5461 limit
         n = len(texts)
         logging.info(f"Indexing documents in batches of {batch_size}...")
         for start in tqdm(range(0, n, batch_size)):
@@ -87,7 +87,7 @@ class TextRAG(RAGSystem):
             # logging.info(f"Upserting batch {start} ~ {end-1} ({len(batch_texts)} docs)")
             db.add_texts(texts=batch_texts, metadatas=batch_metas)
 
-        # 持久化到磁盘
+        # Persist to disk
         db.persist()
         logging.info(f"✅ New database created and persisted at {persist_dir} with {n} documents.")
 
@@ -140,8 +140,8 @@ class TextRAG(RAGSystem):
             docs = []
             
             if retrieved_docs:
-                # 假设 retrieved_docs = [(Document, score), ...]
-                # 计算 query 向量
+                # Assume retrieved_docs = [(Document, score), ...]
+                # Calculate query vector
                 query_emb = self.retriever._embed(query)
                 query_emb = torch.tensor(query_emb, dtype=torch.float32)
                 query_emb = F.normalize(query_emb, p=2, dim=0)

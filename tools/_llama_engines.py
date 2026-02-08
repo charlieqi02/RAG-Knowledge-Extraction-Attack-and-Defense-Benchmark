@@ -3,11 +3,11 @@ import torch
 from typing import List, Dict, Optional
 from pydantic import ValidationError
 
-from unsloth import FastLanguageModel  # ✅ 新增：Unsloth
+from unsloth import FastLanguageModel
 
 from smolagents.models import MessageRole, get_clean_message_list
 
-# 你上面已有
+# role conversions
 openai_role_conversions = {MessageRole.TOOL_RESPONSE: MessageRole.USER}
 
 
@@ -102,7 +102,7 @@ class LlamaEngine:
         self.model_name = model_name
         self.max_new_tokens = max_new_tokens
 
-        # device 只用来放 inputs，模型由 Unsloth 自己管理
+        # device is only used for inputs; model is managed by Unsloth
         if device is None:
             if torch.cuda.is_available():
                 device = "cuda"
@@ -111,7 +111,7 @@ class LlamaEngine:
         self.device = device
 
         # -------- Unsloth: from_pretrained --------
-        # 将 torch.dtype 转成 Unsloth 习惯的字符串（也可以直接用 None，让 Unsloth 自适应）
+        # Convert torch.dtype to string format expected by Unsloth (or None for auto)
         if isinstance(dtype, torch.dtype):
             if dtype == torch.float16:
                 unsloth_dtype = "float16"
@@ -122,16 +122,16 @@ class LlamaEngine:
             else:
                 unsloth_dtype = None
         else:
-        # 如果用户直接传字符串，原样给 Unsloth
+        # If user passes a string directly, forward as-is to Unsloth
             unsloth_dtype = dtype
 
-        # 如果是 GPU，默认用 4bit；CPU 上就不开 4bit
+        # Use 4bit on GPU by default; disable on CPU
         load_in_4bit = "cuda" in self.device
 
-        # 这里给个常用 max_seq_length；你需要的话可以改成参数
+        # Default max_seq_length; can be parameterized if needed
         max_seq_length = 4096
 
-        # ✅ 用 Unsloth 加载模型 & tokenizer
+        # Load model & tokenizer via Unsloth
         self.model, self.tokenizer = FastLanguageModel.from_pretrained(
             model_name=self.model_name,
             max_seq_length=max_seq_length,
@@ -139,7 +139,7 @@ class LlamaEngine:
             load_in_4bit=load_in_4bit,
         )
 
-        # 设定为 inference 模式（会关掉 dropout 等）
+        # Set to inference mode (disables dropout, etc.)
         FastLanguageModel.for_inference(self.model)
 
         # optional metrics collection similar to AzureOpenAIEngine
@@ -181,7 +181,7 @@ class LlamaEngine:
         inputs = {k: v.to(self.device) for k, v in inputs.items()}
         prompt_token_count = inputs["input_ids"].shape[-1]
         
-        # 4) generate （Unsloth 的模型接口跟 HF 一样）
+        # 4) generate (Unsloth model API is same as HF)
         with torch.no_grad():
             gen_out = self.model.generate(
                 **inputs,
@@ -192,11 +192,11 @@ class LlamaEngine:
             )
         
         # 5) decode & apply stop sequences
-        # ✅ 用 token 级别来切分：先取出生成的所有 token
+        # Split at token level: extract all generated tokens
         generated_ids = gen_out[0]
         input_len = inputs["input_ids"].shape[-1]
         new_tokens = generated_ids[input_len:]
-        # 再 decode 这部分
+        # Decode the new tokens
         completion_text = self.tokenizer.decode(new_tokens, skip_special_tokens=True)
         completion_text = apply_stop_sequences(completion_text, stop_sequences)
 
@@ -225,7 +225,7 @@ class LlamaEngine:
 if __name__ == "__main__":
     print("=== Testing LlamaEngine with Unsloth + Llama 3.1 8B Instruct ===")
 
-    # 你指定的模型
+    # Specify the model
     # "Qwen/Qwen2.5-7B-Instruct"
     # "Qwen/Qwen2-7B-Instruct"
     # "meta-llama/Meta-Llama-3.1-8B-Instruct"
@@ -236,7 +236,7 @@ if __name__ == "__main__":
         device="cuda" if torch.cuda.is_available() else "cpu",
     )
 
-    # 测试消息格式
+    # Test message format
     messages = [
         {"role": "system", "content": "You are a concise and helpful AI assistant."},
         {"role": "user", "content": "What is the capital of France?"},

@@ -31,12 +31,12 @@ def cos_sim(vec1, vec2):
 
 def parse_anchor_words(raw: str):
     """
-    从模型输出中解析 anchor words 列表。
-    支持 JSON 格式、非标准 JSON 格式、或仅部分匹配。
+    Parse anchor words list from model output.
+    Supports JSON format, non-standard JSON format, or partial matching.
     """
-    # 尝试直接解析 JSON 块
+    # Try to parse JSON block directly
     try:
-        # 找到最可能的 JSON 子串
+        # Find the most likely JSON substring
         json_match = re.search(r'\{.*?\}', raw, re.DOTALL)
         if json_match:
             obj = json.loads(json_match.group(0))
@@ -45,15 +45,15 @@ def parse_anchor_words(raw: str):
     except Exception:
         pass
 
-    # fallback: 正则提取
+    # fallback: regex extraction
     candidates = re.findall(r'"anchor words"\s*:\s*\[(.*?)\]', raw, re.DOTALL)
     words = []
     for c in candidates:
-        # 分割逗号并清洗引号
+        # split by comma and clean quotes
         parts = re.findall(r'"(.*?)"', c)
         words.extend(parts)
 
-    # 清洗与长度过滤
+    # clean and filter by length
     return list(set([w.strip() for w in words if w and len(w.strip()) <= 80]))
 
 

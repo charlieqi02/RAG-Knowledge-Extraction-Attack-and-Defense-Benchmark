@@ -14,13 +14,13 @@ def split_text(text, pattern):
         bot = m.group(2).strip()
         return human, bot
     else:
-        # 兜底逻辑：尝试按首次出现的 "<bot>:" 
+        # Fallback: try splitting at first occurrence of "<bot>:"
         idx = s.find("<bot>:")
         if idx != -1:
             human = s[:idx].replace("<human>:", "").strip()
             bot = s[idx + len("<bot>:"):].strip()
             return human, bot
-        # 如果仍失败，保留原文到 output，input 设为空
+        # If still fails, keep original text as output, set input to empty
         
         logging.warning(f"dataset parse wrong: {text}")
         return "", s
@@ -39,7 +39,7 @@ def index_qas(qa_pairs):
         q = qa["query"]
         c = qa["answer"]
 
-        # 处理 query id
+        # Process query id
         if q not in q2id:
             q_id = str(len(unique_queries))
             q2id[q] = q_id
@@ -48,7 +48,7 @@ def index_qas(qa_pairs):
         else:
             q_id = q2id[q]
 
-        # 处理 answer id
+        # Process answer id
         if c not in a2id:
             c_id = str(len(unique_answers))
             a2id[c] = c_id
