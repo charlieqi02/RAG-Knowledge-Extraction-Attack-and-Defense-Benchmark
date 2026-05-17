@@ -1,6 +1,10 @@
 # Benchmarking Knowledge-Extraction Attacks and Defenses on Retrieval-Augmented Generation
 
-This repository contains the code for the paper *"Benchmarking Knowledge-Extraction Attacks and Defenses on Retrieval-Augmented Generation"*. It provides a modular pipeline for evaluating adversarial knowledge-extraction attacks and defenses on RAG systems across multiple datasets, LLM generators, and embedding models.
+![Overview](paper.png)
+
+This repository contains the code for the paper *"Benchmarking Knowledge-Extraction Attacks and Defenses on Retrieval-Augmented Generation"* — **accepted at the KDD 2026 Benchmark and Dataset track**. It provides a modular pipeline for evaluating adversarial knowledge-extraction attacks and defenses on RAG systems across multiple datasets, LLM generators, and embedding models.
+
+**Paper:** [arXiv:2602.09319](https://arxiv.org/pdf/2602.09319)
 
 ## Table of Contents
 
@@ -12,6 +16,7 @@ This repository contains the code for the paper *"Benchmarking Knowledge-Extract
 - [Supported Defenses](#supported-defenses)
 - [Datasets](#datasets)
 - [Evaluation](#evaluation)
+- [Citation](#citation)
 
 ## Project Structure
 
@@ -88,11 +93,44 @@ Extraction-AD-Pipeline/
 ├── logs/                       # Experiment output logs (auto-created)
 │
 └── scripts/                    # Bash scripts for running experiments
-    ├── ablation-command/       #   Ablation study: attacks x instruction prompts x generators
-    ├── query-diversity/        #   Query diversity and threshold experiments
-    ├── queryblock/             #   QueryBlock defense experiments
-    ├── efficiency/             #   Efficiency benchmarking experiments
-    ├── target_extraction/      #   Private information extraction scripts
+    ├── attacks/                #   Per-dataset, per-attack base scripts (building blocks)
+    │   ├── enron/              #     {randemb,randtoken,randtext,dgea,copybreak,ikea,utility}.bash
+    │   ├── harrypotter/        #     (same set)
+    │   ├── healthcare/         #     (same set)
+    │   └── pokemon/            #     (same set)
+    │
+    ├── main-table/             #   Main results: 4 datasets x 6 attacks x 4 defenses
+    │   └── run.sh              #     (None / Threshold / Summary / SystemBlock)
+    ├── queryblock/             #   QueryBlock defense across all attacks/datasets
+    │   └── run.sh
+    ├── efficiency/             #   Per-query wall time + API cost benchmark
+    │   └── run.sh
+    ├── query-diversity/        #   Threshold-defense sweep for embedding-based attacks
+    │   └── run.sh
+    │
+    ├── ablation-command/       #   Ablation: instruction-prompt x generator
+    │   └── run.sh
+    ├── ablation-generator/     #   Ablation: closed + open RAG generators
+    │   └── run.sh
+    ├── ablation-emb/           #   Ablation: retriever + attacker embedding model
+    │   └── run.sh              #     (white-box MiniLM, white-box BGE-large, black-box)
+    ├── ablation-chunking/      #   Ablation: chunk size / strategy variants
+    │   ├── run.sh
+    │   └── chunked/            #     {enron,healthcare,harrypotter}-chunk/*.bash
+    │
+    ├── target-extraction/      #   Private-information extraction targets per dataset
+    │   └── {enron,harrypotter,healthcare,pokemon}.sh
+    │
+    ├── rebuttals/              #   Additional experiments for paper rebuttals
+    │   ├── multi-seeds/        #     Variance over multiple random seeds
+    │   ├── defense-cost/       #     Cost-of-defense for a fixed attack
+    │   ├── defense-utility/    #     Utility under each defense (benign queries)
+    │   ├── defense-combine/    #     Combined defenses (QBRetrSum, RetrSumSys)
+    │   ├── sensitive-audit/    #     Sensitive-attribute audit per dataset
+    │   ├── multilingual/       #     Chinese + Vietnamese medical corpora
+    │   └── new-defenses/       #     SAGE, VAGUE-GATE
+    │
+    ├── get_emb_stats.sh        #   Embedding distribution stats on WikiText
     └── reduce.sh               #   t-SNE dimensionality reduction
 ```
 
@@ -214,113 +252,111 @@ python pipeline.py \
 
 ### Using Bash Scripts
 
-All experiment scripts are in `./scripts/`. Each individual `.bash` file contains a fully specified experiment command. Master `.sh` files orchestrate multiple runs.
+All experiment scripts live in `./scripts/`. The layout follows a two-tier pattern:
 
-#### 1. Main Experiments (Ablation over Instruction Prompts)
+- **`scripts/attacks/{dataset}/{attack}.bash`** — atomic, per-dataset per-attack invocations of `pipeline.py`. Use these as building blocks; they accept extra args via `"$@"`.
+- **`scripts/<experiment>/run.sh`** — orchestrators that sweep the building blocks across datasets, attacks, generators, defenses, etc.
 
-Located in `scripts/ablation-command/`. Each dataset has a subfolder with per-attack scripts:
+Any flag passed to a `run.sh` is forwarded to every underlying attack script, e.g.
+`bash scripts/main-table/run.sh --rg_generator llama3-8B-I`.
 
-```
-scripts/ablation-command/
-├── ab_com.sh                       # Master script: runs all datasets x attacks x prompts x generators
-├── ab_com_enron.sh                 # Enron-only subset
-├── ab_com_harry.sh                 # HarryPotter-only subset
-├── ab_com_health.sh                # HealthCareMagic-only subset
-├── ab_com_pokemon.sh               # Pokemon-only subset
-├── enron-500k-none/
-│   ├── dgea.bash                   # DGEA attack on Enron
-│   ├── copybreak.bash              # CopyBreak attack on Enron
-│   ├── randemb.bash                # RandomEmb baseline on Enron
-│   ├── randtoken.bash              # RandomToken baseline on Enron
-│   └── randtext.bash               # RandomText baseline on Enron
-├── harrypotter-26k-none/           # Same structure for HarryPotter
-├── health-100k-none/               # Same structure for HealthCareMagic
-└── pokemon-1k-none/                # Same structure for Pokemon
-```
-
-Run a single attack:
+#### 1. Single Attack on a Single Dataset
 
 ```bash
-bash scripts/ablation-command/enron-500k-none/dgea.bash
-```
+# DGEA on Enron, no defense
+bash scripts/attacks/enron/dgea.bash
 
-Override the generator and instruction prompt:
-
-```bash
-bash scripts/ablation-command/enron-500k-none/dgea.bash \
+# Same, but override generator and instruction prompt
+bash scripts/attacks/enron/dgea.bash \
     --rg_generator "gpt4o-mini" \
     --ak_command_prompt "attack_templates/jailbreak.txt"
 ```
 
-Run all ablation experiments for a dataset:
+#### 2. Main Results Table
+
+`scripts/main-table/run.sh` — 4 datasets x 6 attacks x 4 defenses (`None`, `Threshold`, `Summary`, `SystemBlock`). `QueryBlock` is run separately.
 
 ```bash
-bash scripts/ablation-command/ab_com_enron.sh
+bash scripts/main-table/run.sh
 ```
 
-Run the full ablation study (all datasets, attacks, generators, prompts):
+#### 3. QueryBlock Defense
+
+`scripts/queryblock/run.sh` — runs all 6 attacks plus the Utility baseline against QueryBlock on every dataset.
 
 ```bash
-bash scripts/ablation-command/ab_com.sh
+bash scripts/queryblock/run.sh
 ```
 
-#### 2. QueryBlock Defense Experiments
+#### 4. Efficiency Benchmarking
 
-Located in `scripts/queryblock/`. Tests all attacks against the QueryBlock defense:
+`scripts/efficiency/run.sh` — per-query wall time and API cost across all datasets, using the OpenAI-direct generator endpoint for accurate token accounting.
 
 ```bash
-# Run all attacks on Enron with QueryBlock defense
-bash scripts/queryblock/enron.sh
-
-# Run all attacks on HarryPotter with QueryBlock defense
-bash scripts/queryblock/harry.sh
-
-# Run a single attack with QueryBlock
-bash scripts/queryblock/enron-500k/dgea.bash
+bash scripts/efficiency/run.sh
+bash scripts/efficiency/run.sh --defense None
 ```
 
-#### 3. Efficiency Benchmarking
+#### 5. Query Diversity (Threshold Sweep)
 
-Located in `scripts/efficiency/`. Measures per-query time and cost:
+`scripts/query-diversity/run.sh` — measures how the Threshold defense affects DGEA and RandEmb across `--df_threshold ∈ {0.3, 0.5, 0.7}` for all 4 datasets.
 
 ```bash
-# Run efficiency benchmarks across all datasets
-bash scripts/efficiency/efficiency.sh
-
-# Run a single efficiency test
-bash scripts/efficiency/enron-500k/dgea.bash \
-    --defense "None" \
-    --rg_generator "gpt4o-mini-openai"
+bash scripts/query-diversity/run.sh
 ```
 
-#### 4. Query Diversity and Threshold Experiments
+#### 6. Ablation Studies
 
-Located in `scripts/query-diversity/`. Tests how retrieval similarity thresholds affect attack performance:
+| Script | What it varies |
+|--------|----------------|
+| `scripts/ablation-command/run.sh` | Generator x instruction-prompt template x dataset x attack |
+| `scripts/ablation-generator/run.sh` | RAG generators (closed + open: GPT-4o/-mini, Llama3-8B-I, Qwen2.5-7B, Claude Sonnet) |
+| `scripts/ablation-emb/run.sh` | Retriever and attacker embedding model (white-box MiniLM, white-box BGE-large, black-box BGE/GTE) |
+| `scripts/ablation-chunking/run.sh` | Chunk size / strategy via the `chunked/` dataset variants |
 
 ```bash
-# Run query diversity experiments on Enron (includes Threshold defense)
-bash scripts/query-diversity/enron.sh
-
-# Batch threshold experiments
-bash scripts/query-diversity/qd_thesh1.sh
-bash scripts/query-diversity/qd_thesh2.sh
+bash scripts/ablation-command/run.sh
+bash scripts/ablation-generator/run.sh
+bash scripts/ablation-emb/run.sh
+bash scripts/ablation-chunking/run.sh
 ```
 
-#### 5. Target Extraction
+#### 7. Target Extraction
 
-Located in `scripts/target_extraction/`. Extracts private information targets from datasets:
+Per-dataset private-information extraction targets:
 
 ```bash
-bash scripts/target_extraction/enron.sh
-bash scripts/target_extraction/health.sh
+bash scripts/target-extraction/enron.sh
+bash scripts/target-extraction/healthcare.sh
+bash scripts/target-extraction/harrypotter.sh
+bash scripts/target-extraction/pokemon.sh
 ```
 
-#### 6. Visualization
+#### 8. Rebuttal Experiments
 
-Generate t-SNE plots of query embeddings:
+Each subfolder under `scripts/rebuttals/` has its own `run.sh`:
+
+| Subfolder | Purpose |
+|-----------|---------|
+| `multi-seeds/` | Variance across seeds for (defense x attack) combos on HarryPotter + Pokemon |
+| `defense-cost/` | Cost of each defense on a fixed attack (RandomToken on HarryPotter) |
+| `defense-utility/` | RAG utility on benign queries under each defense |
+| `defense-combine/` | Combined defenses: `QBRetrSum`, `RetrSumSys` |
+| `sensitive-audit/` | Sensitive-attribute audit per dataset |
+| `multilingual/` | Extraction on Chinese + Vietnamese medical corpora |
+| `new-defenses/sage/` | SAGE defense (Sensitive-Attribute Gating) |
+| `new-defenses/vague-gate/` | VAGUE-GATE defense |
 
 ```bash
-bash scripts/reduce.sh
+bash scripts/rebuttals/multi-seeds/run.sh
+bash scripts/rebuttals/new-defenses/sage/run.sh
+```
+
+#### 9. Utilities
+
+```bash
+bash scripts/get_emb_stats.sh   # Embedding-distribution stats on WikiText
+bash scripts/reduce.sh          # t-SNE dimensionality reduction over logged queries
 ```
 
 ## Supported Attacks
@@ -390,3 +426,16 @@ evaluator.evaluate()
 **LLM Generators:** GPT-4o, GPT-4o-mini (Azure/OpenAI), Llama-3-8B-Instruct, Qwen2.5-7B-Instruct (local), Claude Sonnet (GCP Vertex)
 
 **Embedding Models:** all-MiniLM-L6-v2, GTE-base, BGE-large, Nomic-Embed-v1.5, GTE-small
+
+## Citation
+
+If you use this benchmark or the code in your research, please cite:
+
+```bibtex
+@inproceedings{ke-rag-benchmark-kdd2026,
+  title     = {Benchmarking Knowledge-Extraction Attacks and Defenses on Retrieval-Augmented Generation},
+  booktitle = {Proceedings of the 32nd ACM SIGKDD Conference on Knowledge Discovery and Data Mining (KDD '26), Benchmark and Dataset Track},
+  year      = {2026},
+  url       = {https://arxiv.org/pdf/2602.09319}
+}
+```
