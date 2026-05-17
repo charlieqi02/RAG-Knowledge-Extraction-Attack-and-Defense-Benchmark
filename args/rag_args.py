@@ -18,9 +18,9 @@ def get_rag_args(p, rag):
             "--rg_retr_kwargs_topk", dest="rg.retr_kwargs.topk", default=5, type=int, help="Retriever top-k documents.")
         
         p.add_argument(
-            "--rg_gen_kwargs_template", dest="rg.gen_kwargs.template", default="default_template.txt", type=str, help="Gneration prompt template path.")
+            "--rg_gen_kwargs_template", dest="rg.gen_kwargs.template", default="textrag/template.txt", type=str, help="Gneration prompt template path.")
         p.add_argument(
-            "--rg_gen_kwargs_system_prompt", dest="rg.gen_kwargs.system_prompt", default="default_system_prompt.txt", type=str, help="Generation system prompt path.")
+            "--rg_gen_kwargs_system_prompt", dest="rg.gen_kwargs.system_prompt", default="textrag/system.txt", type=str, help="Generation system prompt path.")
         p.add_argument(
-            "--rg_role", dest="rg.role", default="medical assistant", type=str, help="Role to be filled in the system prompt.")
+            "--rg_role", dest="rg.role", default="email assistant", type=str, help="Role to be filled in the system prompt.")
         

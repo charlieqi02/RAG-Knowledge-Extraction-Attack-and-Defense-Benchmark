@@ -16,11 +16,11 @@ def get_attack_args(p, attack):
         p.add_argument(
             "--ak_allow_non_ascii", dest="ak.allow_non_ascii", default=False, action='store_true', help="Allow non-ascii characters in the query")
         p.add_argument(
-            "--ak_command_prompt", dest="ak.command_prompt", default="default", type=str, help="Command prompt path for DGEA")
+            "--ak_command_prompt", dest="ak.command_prompt", default="copybreak/attack_template.txt", type=str, help="Command prompt path for DGEA")
         p.add_argument(
-            "--ak_info_prompt", dest="ak.info_prompt", default="default", type=str, help="Info prompt path for DGEA")
+            "--ak_info_prompt", dest="ak.info_prompt", default="dgea/ak_suffix.txt", type=str, help="Info prompt path for DGEA")
         p.add_argument(
-            "--ak_random_vec", dest="ak.random_vec", default="", type=str, help="Random vector distribution file path for DGEA")
+            "--ak_random_vec", dest="ak.random_vec", default="embedding_statistics.csv", type=str, help="Random vector distribution file path for DGEA")
     
     elif attack == "CopyBreak":
         p.add_argument(
@@ -28,13 +28,13 @@ def get_attack_args(p, attack):
         p.add_argument(
             "--ak_emb_model", dest="ak.emb_model", default="MiniLM", type=str, help="Embedding model for CopyBreak")
         p.add_argument(
-            "--ak_attack_template", dest="ak.attack_template", default="default", type=str, help="Attack template prompt path for CopyBreak")
+            "--ak_attack_template", dest="ak.attack_template", default="copybreak/attack_template.txt", type=str, help="Attack template prompt path for CopyBreak")
         p.add_argument(
             "--ak_sim_thresh", dest="ak.sim_thresh", default=0.7, type=float, help="Similarity threshold for exploration in CopyBreak")
         p.add_argument(
-            "--ak_explore_template", dest="ak.explore_template", default="default", type=str, help="Exploration template prompt path for CopyBreak")
+            "--ak_explore_template", dest="ak.explore_template", default="copybreak/explore_template.txt", type=str, help="Exploration template prompt path for CopyBreak")
         p.add_argument(
-            "--ak_exploit_template", dest="ak.exploit_template", default="default", type=str, help="Exploitation template prompt path for CopyBreak")
+            "--ak_exploit_template", dest="ak.exploit_template", default="copybreak/exploit_template.txt", type=str, help="Exploitation template prompt path for CopyBreak")
         p.add_argument(
             "--ak_exchange_rate", dest="ak.exchange_rate", default=0.5, type=float, help="Rate of change between exploration and exploitation in CopyBreak")
         p.add_argument(
@@ -52,11 +52,11 @@ def get_attack_args(p, attack):
         p.add_argument(
             "--ak_attack_emb_model", dest="ak.attack_emb_model", default="MiniLM", type=str, help="Embedding model for IKEA attack")
         p.add_argument(
-            "--ak_topic_word", dest="ak.topic_word", default="default", type=str, help="Topic word for IKEA attack")
+            "--ak_topic_word", dest="ak.topic_word", default="enron emails", type=str, help="Topic word for IKEA attack")
         p.add_argument(
             "--ak_num_anchors", dest="ak.num_anchors", default=5, type=int, help="Number of anchor points for IKEA attack")
         p.add_argument(
-            "--ak_anchor_gen_template", dest="ak.anchor_gen_template", default="default", type=str, help="Anchor generation template prompt path for IKEA attack")
+            "--ak_anchor_gen_template", dest="ak.anchor_gen_template", default="ikea/anchor_gen_template.txt", type=str, help="Anchor generation template prompt path for IKEA attack")
         p.add_argument(
             "--ak_query_gen_iterations", dest="ak.query_gen_iterations", default=5, type=int, help="Number of query generation iterations per anchor for IKEA attack")
         p.add_argument(
@@ -68,7 +68,7 @@ def get_attack_args(p, attack):
         p.add_argument(
             "--ak_sample_temperature", dest="ak.sample_temperature", default=1, type=float, help="Sampling temperature for IKEA attack")
         p.add_argument(
-            "--ak_anchor_query_gen_template", dest="ak.anchor_query_gen_template", default="default", type=str, help="Anchor to query generation template prompt path for IKEA attack")
+            "--ak_anchor_query_gen_template", dest="ak.anchor_query_gen_template", default="ikea/anchor_query_gen_template.txt", type=str, help="Anchor to query generation template prompt path for IKEA attack")
         p.add_argument(
             "--ak_thresh_irrelevant", dest="ak.thresh_irrelevant", default=0.5, type=float, help="Threshold to filter irrelevant queries for IKEA attack")
         p.add_argument(
@@ -82,7 +82,7 @@ def get_attack_args(p, attack):
         p.add_argument(
             "--ak_gamma", dest="ak.gamma", default=0.5, type=float, help="Trust region scale for IKEA attack")
         p.add_argument(
-            "--ak_anchor_mutate_gen_template", dest="ak.anchor_mutate_gen_template", default="default", type=str, help="Anchor mutation generation template prompt path for IKEA attack")
+            "--ak_anchor_mutate_gen_template", dest="ak.anchor_mutate_gen_template", default="ikea/anchor_mutate.txt", type=str, help="Anchor mutation generation template prompt path for IKEA attack")
         p.add_argument(
             "--ak_thresh_stop_q", dest="ak.thresh_stop_q", default=0.9, type=float, help="Threshold to stop query generation for IKEA attack")
         p.add_argument(
@@ -114,9 +114,9 @@ def get_attack_args(p, attack):
         p.add_argument(
             "--ak_emb_model", dest="ak.emb_model", default="MiniLM", type=str, help="Embedding model for RandomEmb attack")
         p.add_argument(
-            "--ak_random_vec", dest="ak.random_vec", default="", type=str, help="Random vector distribution file path for RandomEmb attack")
+            "--ak_random_vec", dest="ak.random_vec", default="embedding_statistics.csv", type=str, help="Random vector distribution file path for RandomEmb attack")
         p.add_argument(
-            "--ak_attack_template", dest="ak.attack_template", default="random/attack_template.txt", type=str, help="Attack instruction template path for RandomEmb attack")
+            "--ak_attack_template", dest="ak.attack_template", default="copybreak/attack_template.txt", type=str, help="Attack instruction template path for RandomEmb attack")
         p.add_argument(
             "--ak_iterations", dest="ak.iterations", default=3, type=int, help="Number of iterations for RandomEmb attack")
         p.add_argument(
@@ -124,11 +124,11 @@ def get_attack_args(p, attack):
         p.add_argument(
             "--ak_allow_non_ascii", dest="ak.allow_non_ascii", default=False, action='store_true', help="Allow non-ascii characters in the query for RandomEmb attack")
         p.add_argument(
-            "--ak_info_prompt", dest="ak.info_prompt", default="default", type=str, help="Info prompt path for RandomEmb attack")
+            "--ak_info_prompt", dest="ak.info_prompt", default="random/ak_suffix.txt", type=str, help="Info prompt path for RandomEmb attack")
 
     elif attack == "Utility":
         p.add_argument(
-            "--ak_data_path", dest="ak.data_path", default="", type=str, help="Path to utility questions JSONL file for Utility attack")
+            "--ak_data_path", dest="ak.data_path", default="./data/Enron", type=str, help="Path to dataset folder containing utility_questions.jsonl for Utility attack")
         
 
         
