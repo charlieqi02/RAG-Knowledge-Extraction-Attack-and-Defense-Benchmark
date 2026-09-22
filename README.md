@@ -1,10 +1,10 @@
-# Benchmarking Knowledge-Extraction Attacks and Defenses on Retrieval-Augmented Generation
+# Benchmarking Knowledge-Extraction Attacks and Defenses on Retrieval-Augmented Generation (KDD 2026)
 
 ![Overview](paper.png)
 
 This repository contains the code for the paper *"Benchmarking Knowledge-Extraction Attacks and Defenses on Retrieval-Augmented Generation"* — **accepted at the KDD 2026 Benchmark and Dataset track**. It provides a modular pipeline for evaluating adversarial knowledge-extraction attacks and defenses on RAG systems across multiple datasets, LLM generators, and embedding models.
 
-**Paper:** [arXiv:2602.09319](https://arxiv.org/pdf/2602.09319)
+**Paper:** [arXiv:2602.09319](https://arxiv.org/pdf/2602.09319) ([KDD 2026 proceedings](https://doi.org/10.1145/3770855.3817524))
 
 ## Table of Contents
 
@@ -429,13 +429,24 @@ evaluator.evaluate()
 
 ## Citation
 
-If you use this benchmark or the code in your research, please cite:
+If you use this benchmark or the code in your research, please cite our [KDD paper](https://doi.org/10.1145/3770855.3817524) ([arXiv mirror](https://arxiv.org/abs/2602.09319)):
 
 ```bibtex
-@inproceedings{ke-rag-benchmark-kdd2026,
-  title     = {Benchmarking Knowledge-Extraction Attacks and Defenses on Retrieval-Augmented Generation},
-  booktitle = {Proceedings of the 32nd ACM SIGKDD Conference on Knowledge Discovery and Data Mining (KDD '26), Benchmark and Dataset Track},
-  year      = {2026},
-  url       = {https://arxiv.org/pdf/2602.09319}
-}
+@inproceedings{10.1145/3770855.3817524,
+    author = {Qi, Zhisheng and Sahu, Utkarsh and Ma, Li and Han, Haoyu and Rossi, Ryan and Dernoncourt, Franck and Halappanavar, Mahantesh and Ahmed, Nesreen and Dong, Yushun and Zhao, Yue and Zhang, Yu and Wang, Yu},
+    title = {Benchmarking Knowledge-Extraction Attack and Defense on Retrieval-Augmented Generation (RAG)},
+    year = {2026},
+    isbn = {9798400722592},
+    publisher = {Association for Computing Machinery},
+    address = {New York, NY, USA},
+    url = {https://doi.org/10.1145/3770855.3817524},
+    doi = {10.1145/3770855.3817524},
+    abstract = {Retrieval-Augmented Generation (RAG) has become a cornerstone of knowledge-intensive applications, including enterprise chatbots, healthcare assistants, and agentic memory systems. However, recent studies show that knowledge-extraction attacks can recover sensitive knowledge-base content through maliciously crafted queries, raising serious privacy and intellectual-property concerns. While prior work has explored individual attack and defense techniques, the research landscape remains fragmented across retrievers, generators, and evaluations based on non-standardized metrics and datasets. To address this gap, we introduce the first systematic benchmark for knowledge-extraction attacks on RAG systems. Our benchmark covers broad attack/defense strategies, representative retrieval embedding models, open/closed-source generators, (non) graph-based indexing, all evaluated under a unified framework with standardized protocols across multiple datasets spanning diverse languages. By consolidating the experimental landscape and enabling reproducible, comparable evaluation, this benchmark provides actionable insights and a practical foundation for developing privacy-preserving RAG systems in the face of emerging knowledge extraction threats.},
+    booktitle = {Proceedings of the 32nd ACM SIGKDD Conference on Knowledge Discovery and Data Mining V.2},
+    pages = {9718–9729},
+    numpages = {12},
+    keywords = {retrieval-augmented generation, knowledge-extraction attack},
+    location = {Republic of Korea},
+    series = {KDD '26}
+}}
 ```
